@@ -8,7 +8,10 @@
 
 # BlastRadius
 
+[![PyPI](https://img.shields.io/pypi/v/blastradius-mcp?color=0b7285&label=pypi)](https://pypi.org/project/blastradius-mcp/)
+[![Python](https://img.shields.io/pypi/pyversions/blastradius-mcp?color=0b7285)](https://pypi.org/project/blastradius-mcp/)
 [![ci](https://github.com/harris-ahmad/blastradius-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/harris-ahmad/blastradius-mcp/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-MIT-0b7285)](https://github.com/harris-ahmad/blastradius-mcp/blob/main/LICENSE)
 
 It remembers what every repository you open depends on, tells your agent who else
 is affected *before* it changes one, and watches those dependencies for
