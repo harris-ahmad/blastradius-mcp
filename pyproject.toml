@@ -61,6 +61,7 @@ include = [
     "/fixtures",
     "/plugin",
     "/README.md",
+    "/CHANGELOG.md",
     "/LICENSE",
     "/pyproject.toml",
 ]

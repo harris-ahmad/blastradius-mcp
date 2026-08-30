@@ -381,6 +381,7 @@ plugin manifest, and the marketplace entry, whose version is what gates a
 plugin update — so bump all three at once and let CI check they agree:
 
 ```bash
+# add the release's entry to CHANGELOG.md first
 python scripts/check-packaging.py --set-version 0.3.0
 git commit -am "Release 0.3.0" && git tag v0.3.0 && git push origin main v0.3.0
 ```
