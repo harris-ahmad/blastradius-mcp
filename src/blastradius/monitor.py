@@ -15,6 +15,7 @@ from typing import Callable
 import httpx
 
 from .osv import ECOSYSTEMS, OsvClient, package_name
+from .semver import AFFECTED, UNKNOWN, spec_is_affected
 from .store import Store
 
 logger = logging.getLogger("blastradius.monitor")
@@ -90,6 +91,7 @@ def check(
                   f""""ecosystem":"{eco}"}}}}' | head -c 300""")
 
     new_alerts: list[dict] = []
+    skipped = 0
     for artifact_id, osv_ids in discovered.items():
         seen = store.seen_osv_ids(artifact_id)
         for osv_id in osv_ids:
@@ -100,7 +102,20 @@ def check(
             except (httpx.HTTPError, ValueError) as exc:
                 logger.warning("Could not fetch %s: %s", osv_id, exc)
                 continue
-            if store.add_alert(artifact_id, cve) and not is_first_run:
+            # Only record what a pinned spec can actually resolve to. An
+            # unparseable spec returns UNKNOWN and is kept: hiding a possible
+            # vulnerability is far worse than showing one that does not apply.
+            specs = store.specs_for_artifact(artifact_id)
+            applicable = [
+                spec or "(unpinned)"
+                for spec in specs
+                if spec_is_affected(spec, cve.get("affected") or []) in (AFFECTED, UNKNOWN)
+            ]
+            if not applicable:
+                skipped += 1
+                continue
+
+            if store.add_alert(artifact_id, cve, applicable) and not is_first_run:
                 artifact = by_id[artifact_id]
                 # Explicit fields, not a dict merge: the artifact's integer `id`
                 # would silently overwrite the advisory's OSV id.
@@ -109,9 +124,13 @@ def check(
                     "artifact_id": artifact_id,
                     "identifier": artifact["identifier"],
                     "type": artifact["type"],
+                    "applies_to": applicable,
                 })
 
     new_alerts.sort(key=lambda a: -_SEVERITY_ORDER.get(a["severity"], 0))
+    if verbose and skipped:
+        print(f"\n  Skipped {skipped} advisory(ies) that no pinned version can "
+              f"resolve to.")
     if verbose and is_first_run:
         recorded = store.stats()["open_alerts"]
         if recorded:
@@ -126,6 +145,8 @@ def format_alerts(alerts: list[dict]) -> str:
         ident = alert.get("cve_id") or alert["id"]
         score = f" ({alert['cvss_score']})" if alert.get("cvss_score") is not None else ""
         lines.append(f"  [{alert['severity'].upper()}{score}] {alert['identifier']} — {ident}")
+        if alert.get("applies_to"):
+            lines.append(f"      affects: {', '.join(alert['applies_to'])}")
         if alert.get("summary"):
             lines.append(f"      {alert['summary'][:140]}")
         if alert.get("url"):

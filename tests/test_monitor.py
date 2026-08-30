@@ -171,3 +171,74 @@ class TestNotify:
             m.httpx.post = original
         assert posted == []            # below threshold: no webhook
         assert "x" in capsys.readouterr().out  # but still printed locally
+
+
+class TestApplicabilityFiltering:
+    """Only record advisories a pinned spec can actually resolve to."""
+
+    LODASH_FIX = {
+        "id": "GHSA-lodash", "summary": "ReDoS",
+        "database_specific": {"severity": "HIGH"},
+        "affected": [{"ranges": [{"type": "SEMVER", "events": [
+            {"introduced": "0"}, {"fixed": "4.17.21"}]}]}],
+    }
+
+    def _client(self):
+        def handler(request):
+            if request.url.path.endswith("/querybatch"):
+                return httpx.Response(200, json={"results": [{"vulns": [{"id": "GHSA-lodash"}]}]})
+            return httpx.Response(200, json=self.LODASH_FIX)
+        return OsvClient(base_url="https://osv.test/v1",
+                         client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+    def _store_pinning(self, tmp_path, spec):
+        s = Store(tmp_path / f"{abs(hash(spec))}.db")
+        s.record("org/api", [Dependency("npm_package", "lodash", spec, "package.json", 1)])
+        return s
+
+    def test_a_fixed_pin_records_nothing(self, tmp_path):
+        store = self._store_pinning(tmp_path, "4.17.21")
+        monitor.check(store, self._client(), first_run_is_silent=False)
+        assert store.stats()["open_alerts"] == 0
+
+    def test_a_vulnerable_pin_is_recorded(self, tmp_path):
+        store = self._store_pinning(tmp_path, "4.17.20")
+        monitor.check(store, self._client(), first_run_is_silent=False)
+        assert store.stats()["open_alerts"] == 1
+
+    def test_a_caret_range_that_could_resolve_low_is_recorded(self, tmp_path):
+        store = self._store_pinning(tmp_path, "^4.17.20")
+        monitor.check(store, self._client(), first_run_is_silent=False)
+        assert store.stats()["open_alerts"] == 1
+
+    def test_a_caret_range_above_the_fix_records_nothing(self, tmp_path):
+        store = self._store_pinning(tmp_path, "^4.17.21")
+        monitor.check(store, self._client(), first_run_is_silent=False)
+        assert store.stats()["open_alerts"] == 0
+
+    def test_an_unpinnable_spec_is_kept_not_dropped(self, tmp_path):
+        """Uncertainty must fail toward showing the alert."""
+        store = self._store_pinning(tmp_path, "latest")
+        monitor.check(store, self._client(), first_run_is_silent=False)
+        assert store.stats()["open_alerts"] == 1
+
+    def test_one_vulnerable_consumer_is_enough(self, tmp_path):
+        store = Store(tmp_path / "multi.db")
+        store.record("org/safe", [Dependency("npm_package", "lodash", "4.17.21", "package.json", 1)])
+        store.record("org/old",  [Dependency("npm_package", "lodash", "4.17.20", "package.json", 1)])
+        alerts = monitor.check(store, self._client(), first_run_is_silent=False)
+        assert len(alerts) == 1
+        assert alerts[0]["applies_to"] == ["4.17.20"]
+
+    def test_applies_to_is_persisted_for_the_reader(self, tmp_path):
+        store = self._store_pinning(tmp_path, "^4.17.20")
+        monitor.check(store, self._client(), first_run_is_silent=False)
+        assert store.alerts_for("lodash")[0]["applies_to"] == "^4.17.20"
+
+    def test_the_report_names_the_affected_specs(self):
+        text = monitor.format_alerts([{
+            "id": "GHSA-x", "cve_id": "CVE-1", "severity": "high", "cvss_score": 7.5,
+            "summary": "s", "url": "", "identifier": "lodash", "type": "npm_package",
+            "applies_to": ["^4.17.20", "4.17.20"],
+        }])
+        assert "affects: ^4.17.20, 4.17.20" in text

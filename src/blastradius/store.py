@@ -111,6 +111,7 @@ class Store:
                     url                 TEXT,
                     first_seen_at       TEXT NOT NULL,
                     acknowledged_at     TEXT,
+                    applies_to          TEXT,
                     UNIQUE(artifact_id, osv_id)
                 );
 
@@ -120,6 +121,14 @@ class Store:
                 CREATE INDEX IF NOT EXISTS idx_artifacts_id  ON artifacts(identifier);
                 """
             )
+            self._ensure_column(conn, "cve_alerts", "applies_to", "TEXT")
+
+    @staticmethod
+    def _ensure_column(conn: sqlite3.Connection, table: str, column: str, sql_type: str) -> None:
+        """Additive migration for indexes created by an earlier version."""
+        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}")
 
     # ── Write path (the capture hook) ─────────────────────────────────────────
 
@@ -282,14 +291,20 @@ class Store:
                 )
             }
 
-    def add_alert(self, artifact_id: int, cve: dict) -> bool:
-        """Returns True if this alert is new."""
+    def add_alert(self, artifact_id: int, cve: dict, applies_to: list[str] | None = None) -> bool:
+        """Returns True if this alert is new.
+
+        `applies_to` records which of the pinned specs this advisory actually
+        covers, so a reader can see it affects two of five consumers rather
+        than assuming all of them.
+        """
         with self._conn() as conn:
             cur = conn.execute(
                 """
                 INSERT OR IGNORE INTO cve_alerts
-                    (artifact_id, osv_id, cve_id, severity, summary, url, first_seen_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (artifact_id, osv_id, cve_id, severity, summary, url,
+                     first_seen_at, applies_to)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     artifact_id,
@@ -299,13 +314,26 @@ class Store:
                     str(cve.get("summary", ""))[:500],
                     cve.get("url"),
                     _now(),
+                    ", ".join(applies_to) if applies_to else None,
                 ),
             )
             return cur.rowcount > 0
 
+    def specs_for_artifact(self, artifact_id: int) -> list[str | None]:
+        """Every distinct version spec pinned against one artifact."""
+        with self._conn() as conn:
+            return [
+                row["version_spec"]
+                for row in conn.execute(
+                    "SELECT DISTINCT version_spec FROM dependencies WHERE artifact_id = ?",
+                    (artifact_id,),
+                )
+            ]
+
     def alerts_for(self, identifier: str, artifact_type: str | None = None) -> list[dict]:
         sql = """
-            SELECT c.osv_id, c.cve_id, c.severity, c.summary, c.url, c.first_seen_at
+            SELECT c.osv_id, c.cve_id, c.severity, c.summary, c.url, c.first_seen_at,
+                   c.applies_to
             FROM cve_alerts c
             JOIN artifacts a ON a.id = c.artifact_id
             WHERE a.identifier = ? AND c.acknowledged_at IS NULL

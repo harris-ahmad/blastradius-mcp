@@ -78,6 +78,9 @@ def parse_vuln(raw: dict) -> dict:
     summary = raw.get("summary") or (raw.get("details") or "")[:200]
 
     return {
+        # Kept structured rather than flattened to strings: deciding whether a
+        # pinned spec falls inside the advisory needs the events, not a label.
+        "affected": raw.get("affected") or [],
         "id": raw.get("id", ""),
         "cve_id": aliases[0] if aliases else None,
         "severity": severity or "unknown",

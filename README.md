@@ -111,6 +111,17 @@ webhook in `~/.blastradius/config.json`:
 { "slack_webhook_url": "https://hooks.slack.com/...", "notify_min_severity": "high" }
 ```
 
+Advisories are filtered to what your pins can actually resolve to. `lodash` at
+`4.17.21` does not alert on an advisory fixed in `4.17.21`; the same package at
+`^4.17.20` does, because that range may still be sitting on `.20`. Each alert
+records which specs it applies to, so you see that it affects two of five
+consumers rather than assuming all of them.
+
+**Uncertainty keeps the alert.** A floating tag, a digest, a git ref or an
+advisory with no usable range data all resolve to *unknown*, and unknown is
+treated as affected. Hiding a possible vulnerability is a far worse failure than
+showing one that turns out not to apply.
+
 Severity is computed from the CVSS v3.1 vector with the real formula, because
 OSV reports a vector far more often than a number. Only ecosystems OSV actually
 covers are monitored — GitHub Actions and npm. Docker images, Terraform modules
@@ -121,7 +132,7 @@ be a lie.
 
 Early. Working today: the index, the pinning classifier, both hooks, all three
 MCP tools, the CVSS scorer, the OSV monitor, and a one-command installer.
-**102 tests passing.**
+**177 tests passing.**
 
 Next: plugin marketplace packaging, and extraction quality work.
 
