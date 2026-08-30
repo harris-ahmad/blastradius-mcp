@@ -40,6 +40,10 @@ def main() -> None:
 
     sub.add_parser("repos", help="List indexed repositories.")
 
+    config_cmd = sub.add_parser("config", help="Show or create the config file.")
+    config_cmd.add_argument("--init", action="store_true",
+                            help="Write a commented example config, without overwriting.")
+
     resolve_cmd = sub.add_parser(
         "resolve",
         help="Read lockfiles for already-indexed repos, so CVE matching is exact.")
@@ -105,6 +109,37 @@ def main() -> None:
             print(f"{count:5d}  {name}")
         if not seen:
             print("Nothing indexed yet.")
+
+    elif args.command == "config":
+        from .config import CONFIG_PATH, EXAMPLE, load
+        if args.init:
+            if CONFIG_PATH.exists():
+                print(f"{CONFIG_PATH} already exists — not overwriting.")
+            else:
+                CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+                CONFIG_PATH.write_text(json.dumps(EXAMPLE, indent=2) + "\n")
+                print(f"Wrote {CONFIG_PATH}")
+            return
+        active = load()
+        print(f"# {CONFIG_PATH}"
+              f"{'' if CONFIG_PATH.exists() else '  (absent — showing defaults)'}")
+        json.dump({
+            "inject": {
+                "enabled": active.inject.enabled,
+                "max_artifacts": active.inject.max_artifacts,
+                "max_consumers": active.inject.max_consumers,
+                "types": list(active.inject.types),
+                "only_when_shared": active.inject.only_when_shared,
+                "min_cve_severity": active.inject.min_cve_severity,
+            },
+            "exclude": {
+                "repositories": list(active.exclude.repositories),
+                "paths": list(active.exclude.paths),
+                "artifacts": list(active.exclude.artifacts),
+            },
+            "notify_min_severity": active.notify_min_severity,
+        }, sys.stdout, indent=2)
+        sys.stdout.write("\n")
 
     elif args.command == "resolve":
         from pathlib import Path

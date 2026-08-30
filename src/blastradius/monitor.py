@@ -26,10 +26,13 @@ _SEVERITY_ORDER = {"critical": 4, "high": 3, "medium": 2, "low": 1, "unknown": 0
 
 
 def load_config() -> dict:
-    try:
-        return json.loads(CONFIG_PATH.read_text())
-    except (OSError, json.JSONDecodeError):
-        return {}
+    """Notification settings, read from the same file everything else uses."""
+    from .config import load as load_typed
+    typed = load_typed()
+    return {
+        "slack_webhook_url": typed.slack_webhook_url,
+        "notify_min_severity": typed.notify_min_severity,
+    }
 
 
 def check(

@@ -150,3 +150,67 @@ class TestDebugNarration:
         root, _ = repo
         hooks.inject({"cwd": str(root), "tool_input": {"file_path": str(root / "Dockerfile")}})
         assert capsys.readouterr().err == ""
+
+
+class TestConfigGovernsInjection:
+    def _with_config(self, monkeypatch, **inject):
+        from blastradius.config import Config, ExcludeConfig, InjectConfig
+        exclude = inject.pop("exclude", ExcludeConfig())
+        monkeypatch.setattr(hooks, "load_config",
+                            lambda: Config(inject=InjectConfig(**inject), exclude=exclude))
+
+    def _shared(self, db):
+        store = Store(db)
+        store.record("org/api", [dep("docker_image", "alpine", "3.19", "Dockerfile", 1)])
+        store.record("org/web", [dep("docker_image", "alpine", "latest", "Dockerfile", 1)])
+
+    def test_injection_can_be_disabled(self, repo, monkeypatch):
+        root, db = repo
+        self._shared(db)
+        self._with_config(monkeypatch, enabled=False)
+        out = hooks.inject({"cwd": str(root),
+                            "tool_input": {"file_path": str(root / "Dockerfile")}})
+        assert "hookSpecificOutput" not in out
+
+    def test_types_can_be_narrowed(self, repo, monkeypatch):
+        root, db = repo
+        self._shared(db)
+        self._with_config(monkeypatch, types=("terraform_module",))
+        out = hooks.inject({"cwd": str(root),
+                            "tool_input": {"file_path": str(root / "Dockerfile")}})
+        assert "hookSpecificOutput" not in out
+
+    def test_an_excluded_repository_is_silent(self, repo, monkeypatch):
+        from blastradius.config import ExcludeConfig
+        root, db = repo
+        self._shared(db)
+        self._with_config(monkeypatch, exclude=ExcludeConfig(repositories=("org/api",)))
+        out = hooks.inject({"cwd": str(root),
+                            "tool_input": {"file_path": str(root / "Dockerfile")}})
+        assert "hookSpecificOutput" not in out
+
+    def test_an_excluded_artifact_is_silent(self, repo, monkeypatch):
+        from blastradius.config import ExcludeConfig
+        root, db = repo
+        self._shared(db)
+        self._with_config(monkeypatch, exclude=ExcludeConfig(artifacts=("alp*",)))
+        out = hooks.inject({"cwd": str(root),
+                            "tool_input": {"file_path": str(root / "Dockerfile")}})
+        assert "hookSpecificOutput" not in out
+
+    def test_consumer_limit_is_respected(self, repo, monkeypatch):
+        root, db = repo
+        store = Store(db)
+        store.record("org/api", [dep("docker_image", "alpine", "3.19", "Dockerfile", 1)])
+        for i in range(5):
+            store.record(f"org/other{i}", [dep("docker_image", "alpine", "latest", "Dockerfile", 1)])
+        self._with_config(monkeypatch, max_consumers=2)
+        out = hooks.inject({"cwd": str(root),
+                            "tool_input": {"file_path": str(root / "Dockerfile")}})
+        assert "…and 3 more" in out["hookSpecificOutput"]["additionalContext"]
+
+    def test_capture_skips_excluded_repositories(self, repo, monkeypatch):
+        from blastradius.config import ExcludeConfig
+        root, _ = repo
+        self._with_config(monkeypatch, exclude=ExcludeConfig(repositories=("org/api",)))
+        assert "hookSpecificOutput" not in hooks.capture({"cwd": str(root)})

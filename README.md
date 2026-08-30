@@ -112,6 +112,46 @@ The MCP tools are `blast_radius`, `hygiene` and `record_dependencies`. `type`
 disambiguates names shared across ecosystems: `node` is both a Docker image and
 an npm package, and they are different rows with different blast radii.
 
+## Controlling what it does
+
+```bash
+blastradius config          # what is active right now
+blastradius config --init   # write an example to ~/.blastradius/config.json
+```
+
+```json
+{
+  "inject": {
+    "enabled": true,
+    "max_artifacts": 8,
+    "max_consumers": 5,
+    "types": ["terraform_module", "github_action"],
+    "only_when_shared": true,
+    "min_cve_severity": "medium"
+  },
+  "exclude": {
+    "repositories": ["acme/internal-*"],
+    "paths": ["vendor/**", "examples/**"],
+    "artifacts": ["registry.internal.*"]
+  }
+}
+```
+
+Injection spends context on every matching read, so it is tunable: narrow it to
+the artifact types you care about, raise the severity floor, or turn it off.
+
+Exclusions govern capture as well as injection. Dependency names are usually
+dull, but a private repository name or an internal registry hostname is not, so
+excluded repositories, paths and artifacts are never written to the index in the
+first place. Every setting has a working default — an absent config file behaves
+exactly as if this section did not exist, and a malformed one falls back to
+defaults rather than breaking a session.
+
+The plugin also ships a **skill** that teaches when consulting the index is
+worth it — before a version bump, when pinning or removing a shared dependency —
+and how to read pinning quality, since a SHA-pinned consumer will not receive
+your change at all while an unpinned one gets it immediately.
+
 ---
 
 ## How the alert filtering works
@@ -189,7 +229,7 @@ regression test on extraction quality.
 ## Status
 
 Early, but complete across all four lanes and verified end to end on two
-machines. **207 tests.**
+machines. **231 tests.**
 
 Next: plugin marketplace packaging, pnpm lockfiles, workflow identifier
 canonicalisation.

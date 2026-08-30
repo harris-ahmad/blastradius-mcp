@@ -18,13 +18,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from .config import load as load_config
 from .repo import find_manifests, is_manifest, repo_root, resolve_repository
 from .scoring import QUALITY_RANK, classify_pinning
 from .store import Store
-
-# Keep injected context small — it is spent on every matching read.
-MAX_ARTIFACTS_SHOWN = 8
-MAX_CONSUMERS_PER_ARTIFACT = 5
 
 _PASS = {"continue": True, "suppressOutput": True}
 
@@ -72,9 +69,17 @@ def inject(payload: dict[str, Any]) -> dict[str, Any]:
         _debug(f"not a manifest file: {file_path}")
         return _PASS
 
+    config = load_config()
+    if not config.inject.enabled:
+        _debug("injection disabled in config")
+        return _PASS
+
     repository = resolve_repository(cwd)
     if not repository:
         _debug(f"could not resolve a repository from cwd: {cwd}")
+        return _PASS
+    if config.exclude.repository(repository):
+        _debug(f"{repository!r} excluded by config")
         return _PASS
     _debug(f"repository resolved as {repository!r}")
 
@@ -105,13 +110,28 @@ def inject(payload: dict[str, Any]) -> dict[str, Any]:
         return _PASS
     _debug(f"{len(artifacts)} artifact(s) in this file")
 
+    if config.exclude.path(relative):
+        _debug(f"{relative!r} excluded by config")
+        return _PASS
+
+    artifacts = [
+        a for a in artifacts
+        if a["type"] in config.inject.types and not config.exclude.artifact(a["identifier"])
+    ]
+    if not artifacts:
+        _debug("every artifact in this file is filtered out by config")
+        return _PASS
+
     lines: list[str] = []
-    for artifact in artifacts[:MAX_ARTIFACTS_SHOWN]:
+    for artifact in artifacts[:config.inject.max_artifacts]:
         others = store.consumers(
             artifact["identifier"], artifact["type"], exclude_repository=repository
         )
-        alerts = store.alerts_for(artifact["identifier"], artifact["type"])
-        if not others and not alerts:
+        alerts = [
+            a for a in store.alerts_for(artifact["identifier"], artifact["type"])
+            if config.severity_at_least(a["severity"], config.inject.min_cve_severity)
+        ]
+        if not others and (config.inject.only_when_shared or not alerts):
             continue
 
         by_repo: dict[str, dict[str, Any]] = {}
@@ -128,13 +148,13 @@ def inject(payload: dict[str, Any]) -> dict[str, Any]:
             ranked = sorted(
                 by_repo.items(),
                 key=lambda kv: -QUALITY_RANK.get(kv[1]["pinning"], 2),
-            )[:MAX_CONSUMERS_PER_ARTIFACT]
+            )[:config.inject.max_consumers]
             lines.append(f"- {header} — also used by {len(by_repo)} other repo(s):")
             for name, info in ranked:
                 spec = info["spec"] or "unpinned"
                 lines.append(f"    {name} @ {spec} ({info['pinning']}) — {info['where'][0]}")
-            if len(by_repo) > MAX_CONSUMERS_PER_ARTIFACT:
-                lines.append(f"    …and {len(by_repo) - MAX_CONSUMERS_PER_ARTIFACT} more")
+            if len(by_repo) > config.inject.max_consumers:
+                lines.append(f"    …and {len(by_repo) - config.inject.max_consumers} more")
         else:
             lines.append(f"- {header}")
 
@@ -166,10 +186,14 @@ def capture(payload: dict[str, Any]) -> dict[str, Any]:
     only decides *when* extraction is owed, which is the part that must not be
     left to chance.
     """
+    config = load_config()
     cwd = payload.get("cwd") or "."
     repository = resolve_repository(cwd)
     if not repository:
         _debug(f"could not resolve a repository from cwd: {cwd}")
+        return _PASS
+    if config.exclude.repository(repository):
+        _debug(f"{repository!r} excluded from capture by config")
         return _PASS
 
     root = repo_root(cwd)
@@ -183,9 +207,8 @@ def capture(payload: dict[str, Any]) -> dict[str, Any]:
     known = {row["file_path"] for row in store.all_dependencies()
              if row["repository"] == repository}
     unseen = [
-        m.relative_to(root).as_posix()
-        for m in manifests
-        if m.relative_to(root).as_posix() not in known
+        path for path in (m.relative_to(root).as_posix() for m in manifests)
+        if path not in known and not config.exclude.path(path)
     ]
     if not unseen:
         _debug(f"every manifest in {repository} is already indexed")
