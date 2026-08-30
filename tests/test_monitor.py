@@ -196,6 +196,22 @@ class TestApplicabilityFiltering:
         s.record("org/api", [Dependency("npm_package", "lodash", spec, "package.json", 1)])
         return s
 
+    def test_a_lockfile_version_beats_a_conservative_range(self, tmp_path):
+        """^4.17.20 permits 4.17.20 and would be kept; the lockfile says 4.17.21."""
+        store = Store(tmp_path / "locked.db")
+        store.record("org/api", [Dependency("npm_package", "lodash", "^4.17.20",
+                                            "package.json", 1, resolved_version="4.17.21")])
+        monitor.check(store, self._client(), first_run_is_silent=False)
+        assert store.stats()["open_alerts"] == 0
+
+    def test_a_lockfile_still_on_a_vulnerable_version_is_kept(self, tmp_path):
+        store = Store(tmp_path / "vuln.db")
+        store.record("org/api", [Dependency("npm_package", "lodash", "^4.17.0",
+                                            "package.json", 1, resolved_version="4.17.20")])
+        alerts = monitor.check(store, self._client(), first_run_is_silent=False)
+        assert len(alerts) == 1
+        assert alerts[0]["applies_to"] == ["4.17.20"]   # reports what is installed
+
     def test_a_fixed_pin_records_nothing(self, tmp_path):
         store = self._store_pinning(tmp_path, "4.17.21")
         monitor.check(store, self._client(), first_run_is_silent=False)

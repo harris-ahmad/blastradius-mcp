@@ -167,3 +167,22 @@ class TestDuplicateAdvisoryRecords:
         assert len(rows) == 2
         # The disagreement is the useful part and must survive storage.
         assert {r["applies_to"] for r in rows} == {"^4.17.20", "4.17.21"}
+
+
+class TestResolvedVersions:
+    def test_backfill_pins_an_existing_index(self, store):
+        store.record("org/api", [dep("npm_package", "vite", "^5.2.0", "package.json")])
+        assert store.specs_for_artifact(1) == [("^5.2.0", None)]
+        assert store.apply_resolved_versions("org/api", {"vite": "5.4.19"}) == 1
+        assert store.specs_for_artifact(1) == [("^5.2.0", "5.4.19")]
+
+    def test_backfill_does_not_leak_across_repositories(self, store):
+        store.record("org/api", [dep("npm_package", "vite", "^5.2.0", "package.json")])
+        store.record("org/web", [dep("npm_package", "vite", "^5.2.0", "package.json")])
+        store.apply_resolved_versions("org/api", {"vite": "5.4.19"})
+        rows = {r["repository"]: r["resolved_version"] for r in store.consumers("vite")}
+        assert rows == {"org/api": "5.4.19", "org/web": None}
+
+    def test_backfill_ignores_non_npm_artifacts(self, store):
+        store.record("org/api", [dep("docker_image", "node", "20-alpine", "Dockerfile")])
+        assert store.apply_resolved_versions("org/api", {"node": "20.11.0"}) == 0

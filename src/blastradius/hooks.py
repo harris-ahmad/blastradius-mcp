@@ -205,7 +205,11 @@ def capture(payload: dict[str, Any]) -> dict[str, Any]:
           "URL refs, and multi-stage build stage aliases (FROM <earlier-stage>).\n"
           "\n"
           "Pass each version_spec exactly as written — keep `^`, `~>`, `>=` "
-          "intact. They are the signal; normalising them destroys it."
+          "intact. They are the signal; normalising them destroys it.\n"
+          "\n"
+          f"Pass root_path as {root} so lockfiles can be read: they say which "
+          "version is actually installed, which turns vulnerability matching "
+          "from conservative into exact."
     )
     return _context("Stop", body)
 

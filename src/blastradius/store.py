@@ -38,12 +38,17 @@ class Dependency:
     version_spec: str | None
     file_path: str
     line_number: int
+    # What the lockfile says is actually installed. A spec permits a range; this
+    # is the single version that range resolved to.
+    resolved_version: str | None = None
 
     def __post_init__(self) -> None:
         # An absent version arrives as null, "" or "   " depending on who is
         # writing. Normalise at the boundary so nothing downstream has to guess.
         cleaned = (self.version_spec or "").strip()
         object.__setattr__(self, "version_spec", cleaned or None)
+        resolved = (self.resolved_version or "").strip()
+        object.__setattr__(self, "resolved_version", resolved or None)
         object.__setattr__(self, "identifier", self.identifier.strip())
 
 
@@ -95,6 +100,7 @@ class Store:
                     repository_id INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
                     artifact_id   INTEGER NOT NULL REFERENCES artifacts(id)    ON DELETE CASCADE,
                     version_spec  TEXT,
+                    resolved_version TEXT,
                     file_path     TEXT NOT NULL,
                     line_number   INTEGER NOT NULL,
                     recorded_at   TEXT NOT NULL,
@@ -122,6 +128,7 @@ class Store:
                 """
             )
             self._ensure_column(conn, "cve_alerts", "applies_to", "TEXT")
+            self._ensure_column(conn, "dependencies", "resolved_version", "TEXT")
 
     @staticmethod
     def _ensure_column(conn: sqlite3.Connection, table: str, column: str, sql_type: str) -> None:
@@ -170,13 +177,16 @@ class Store:
                 cur = conn.execute(
                     """
                     INSERT INTO dependencies
-                        (repository_id, artifact_id, version_spec, file_path, line_number, recorded_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                        (repository_id, artifact_id, version_spec, resolved_version,
+                         file_path, line_number, recorded_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(repository_id, artifact_id, file_path, line_number)
-                    DO UPDATE SET version_spec = excluded.version_spec,
-                                  recorded_at  = excluded.recorded_at
+                    DO UPDATE SET version_spec     = excluded.version_spec,
+                                  resolved_version = excluded.resolved_version,
+                                  recorded_at      = excluded.recorded_at
                     """,
-                    (repo_id, artifact_id, dep.version_spec, dep.file_path, dep.line_number, _now()),
+                    (repo_id, artifact_id, dep.version_spec, dep.resolved_version,
+                     dep.file_path, dep.line_number, _now()),
                 )
                 new_edges += cur.rowcount or 0
 
@@ -202,7 +212,7 @@ class Store:
         """
         sql = """
             SELECT a.type, a.identifier, r.name AS repository, r.owner,
-                   d.version_spec, d.file_path, d.line_number
+                   d.version_spec, d.resolved_version, d.file_path, d.line_number
             FROM dependencies d
             JOIN artifacts    a ON a.id = d.artifact_id
             JOIN repositories r ON r.id = d.repository_id
@@ -245,7 +255,7 @@ class Store:
                 for row in conn.execute(
                     """
                     SELECT a.type, a.identifier, r.name AS repository,
-                           d.version_spec, d.file_path, d.line_number
+                           d.version_spec, d.resolved_version, d.file_path, d.line_number
                     FROM dependencies d
                     JOIN artifacts    a ON a.id = d.artifact_id
                     JOIN repositories r ON r.id = d.repository_id
@@ -351,16 +361,42 @@ class Store:
             cur = conn.execute("DELETE FROM cve_alerts")
             return int(cur.rowcount)
 
-    def specs_for_artifact(self, artifact_id: int) -> list[str | None]:
-        """Every distinct version spec pinned against one artifact."""
+    def specs_for_artifact(self, artifact_id: int) -> list[tuple[str | None, str | None]]:
+        """(spec, resolved) for every distinct pin against one artifact.
+
+        The spec is what the manifest says and permits a range; the resolved
+        version is what a lockfile says is installed. Callers testing
+        applicability should prefer the resolved one — it is a point, not a
+        range, so the answer is exact rather than conservative.
+        """
         with self._conn() as conn:
             return [
-                row["version_spec"]
+                (row["version_spec"], row["resolved_version"])
                 for row in conn.execute(
-                    "SELECT DISTINCT version_spec FROM dependencies WHERE artifact_id = ?",
+                    "SELECT DISTINCT version_spec, resolved_version "
+                    "FROM dependencies WHERE artifact_id = ?",
                     (artifact_id,),
                 )
             ]
+
+    def apply_resolved_versions(self, repository: str, resolved: dict[str, str]) -> int:
+        """Backfill lockfile versions onto an already-captured repository."""
+        updated = 0
+        with self._conn() as conn:
+            for name, version in resolved.items():
+                cur = conn.execute(
+                    """
+                    UPDATE dependencies
+                    SET resolved_version = ?
+                    WHERE artifact_id IN (
+                        SELECT id FROM artifacts WHERE type='npm_package' AND identifier = ?
+                    )
+                    AND repository_id = (SELECT id FROM repositories WHERE name = ?)
+                    """,
+                    (version, name, repository),
+                )
+                updated += cur.rowcount or 0
+        return updated
 
     def alerts_for(self, identifier: str, artifact_type: str | None = None) -> list[dict]:
         sql = """

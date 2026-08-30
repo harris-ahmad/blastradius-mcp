@@ -124,6 +124,17 @@ Advisories are filtered to what your pins can actually resolve to. `lodash` at
 records which specs it applies to, so you see that it affects two of five
 consumers rather than assuming all of them.
 
+**Lockfiles make it exact.** A manifest says `^5.2.0`, which permits 5.2.0 and
+therefore every advisory affecting it. `package-lock.json` says 5.4.19, which
+permits none of them. Lockfiles are parsed directly — machine-generated,
+schema-stable, no ambiguity for a model to resolve — and the resolved version
+wins over the range whenever it is present.
+
+```bash
+blastradius resolve ~/br-fixtures/*     # backfill an index captured earlier
+blastradius check --refresh
+```
+
 **Uncertainty keeps the alert.** A floating tag, a digest, a git ref or an
 advisory with no usable range data all resolve to *unknown*, and unknown is
 treated as affected. Hiding a possible vulnerability is a far worse failure than
@@ -139,7 +150,7 @@ be a lie.
 
 Early. Working today: the index, the pinning classifier, both hooks, all three
 MCP tools, the CVSS scorer, the OSV monitor, and a one-command installer.
-**190 tests passing.**
+**205 tests passing.**
 
 Next: plugin marketplace packaging, and extraction quality work.
 

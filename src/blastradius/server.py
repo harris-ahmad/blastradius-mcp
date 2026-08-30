@@ -11,6 +11,7 @@ from typing import Annotated, Any, Literal
 from mcp.server import MCPServer
 from pydantic import Field
 
+from .lockfile import npm_resolved_versions
 from .scoring import QUALITY_RANK, classify_pinning, worst_quality
 from .store import ARTIFACT_TYPES, Dependency, Store
 
@@ -104,7 +105,12 @@ def record_dependencies(
                     "range operators; they are the whole signal."
     )],
     owner: str | None = None,
-    root_path: str | None = None,
+    root_path: Annotated[str | None, Field(
+        description="Absolute path to the repository root. Pass it whenever you know "
+                    "it — lockfiles found there pin down which version is actually "
+                    "installed, which makes vulnerability matching exact instead of "
+                    "conservative."
+    )] = None,
 ) -> dict[str, Any]:
     """Record what a repository depends on.
 
@@ -112,6 +118,11 @@ def record_dependencies(
     when you have just read manifests the hook would not have seen, or after
     changing a dependency so the index stays current.
     """
+    # Lockfiles are machine-generated and schema-stable, so they are parsed
+    # here rather than left to extraction. The model reports what the manifest
+    # asks for; this records what is actually installed.
+    resolved = npm_resolved_versions(root_path) if root_path else {}
+
     deps = [
         Dependency(
             type=d["type"],
@@ -119,11 +130,20 @@ def record_dependencies(
             version_spec=d.get("version_spec"),
             file_path=d["file_path"],
             line_number=int(d["line_number"]),
+            resolved_version=(
+                d.get("resolved_version")
+                or (resolved.get(d["identifier"]) if d["type"] == "npm_package" else None)
+            ),
         )
         for d in dependencies
     ]
     result = store().record(repository, deps, root_path=root_path, owner=owner)
-    return {"recorded": result["recorded"], "index": store().stats()}
+    locked = sum(1 for d in deps if d.resolved_version)
+    return {
+        "recorded": result["recorded"],
+        "resolved_from_lockfile": locked,
+        "index": store().stats(),
+    }
 
 
 @server.tool()

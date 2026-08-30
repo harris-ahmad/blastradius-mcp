@@ -127,6 +127,22 @@ cat > checkout/package.json <<'EOF'
 }
 EOF
 
+cat > checkout/package-lock.json <<'EOF'
+{
+  "name": "@acme/checkout",
+  "lockfileVersion": 3,
+  "packages": {
+    "": { "name": "@acme/checkout" },
+    "node_modules/express": { "version": "4.21.2" },
+    "node_modules/react": { "version": "18.3.1" },
+    "node_modules/lodash": { "version": "4.17.21" },
+    "node_modules/redis": { "version": "4.6.15" },
+    "node_modules/typescript": { "version": "5.4.5" },
+    "node_modules/vitest": { "version": "3.2.4" }
+  }
+}
+EOF
+
 cat > checkout/.github/workflows/deploy.yml <<'EOF'
 name: deploy
 on:
@@ -162,6 +178,21 @@ cat > web/package.json <<'EOF'
     "react-dom": "18.3.1",
     "lodash": "^4.17.20",
     "vite": "^5.2.0"
+  }
+}
+EOF
+
+# A lockfile: ^5.2.0 in the manifest, but 5.4.19 actually installed.
+cat > web/package-lock.json <<'EOF'
+{
+  "name": "@acme/web",
+  "lockfileVersion": 3,
+  "packages": {
+    "": { "name": "@acme/web" },
+    "node_modules/react": { "version": "18.3.1" },
+    "node_modules/react-dom": { "version": "18.3.1" },
+    "node_modules/lodash": { "version": "4.17.21" },
+    "node_modules/vite": { "version": "5.4.19" }
   }
 }
 EOF

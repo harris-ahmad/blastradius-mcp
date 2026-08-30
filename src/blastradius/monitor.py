@@ -15,7 +15,7 @@ from typing import Callable
 import httpx
 
 from .osv import ECOSYSTEMS, OsvClient, package_name
-from .semver import AFFECTED, UNKNOWN, spec_is_affected
+from .semver import AFFECTED, UNKNOWN, spec_is_affected, version_is_affected
 from .store import Store
 
 logger = logging.getLogger("blastradius.monitor")
@@ -111,12 +111,20 @@ def check(
             # Only record what a pinned spec can actually resolve to. An
             # unparseable spec returns UNKNOWN and is kept: hiding a possible
             # vulnerability is far worse than showing one that does not apply.
-            specs = store.specs_for_artifact(artifact_id)
-            applicable = [
-                spec or "(unpinned)"
-                for spec in specs
-                if spec_is_affected(spec, cve.get("affected") or []) in (AFFECTED, UNKNOWN)
-            ]
+            applicable = []
+            for spec, resolved in store.specs_for_artifact(artifact_id):
+                affected_data = cve.get("affected") or []
+                if resolved:
+                    # A lockfile gives a point version, so the answer is exact
+                    # rather than "the range permits something vulnerable".
+                    verdict = version_is_affected(resolved, affected_data)
+                    hit = verdict is not False   # None (unevaluable) still counts
+                    label = resolved
+                else:
+                    hit = spec_is_affected(spec, affected_data) in (AFFECTED, UNKNOWN)
+                    label = spec or "(unpinned)"
+                if hit and label not in applicable:
+                    applicable.append(label)
             if not applicable:
                 skipped += 1
                 continue

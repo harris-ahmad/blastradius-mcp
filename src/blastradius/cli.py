@@ -40,6 +40,12 @@ def main() -> None:
 
     sub.add_parser("repos", help="List indexed repositories.")
 
+    resolve_cmd = sub.add_parser(
+        "resolve",
+        help="Read lockfiles for already-indexed repos, so CVE matching is exact.")
+    resolve_cmd.add_argument("paths", nargs="*",
+                             help="Repository directories (default: ~/br-fixtures/*).")
+
     alerts_cmd = sub.add_parser("alerts", help="Open CVE alerts, and which pins they hit.")
     alerts_cmd.add_argument("--severity", default=None,
                             choices=["critical", "high", "medium", "low", "unknown"])
@@ -100,6 +106,34 @@ def main() -> None:
         if not seen:
             print("Nothing indexed yet.")
 
+    elif args.command == "resolve":
+        from pathlib import Path
+        from .lockfile import npm_resolved_versions
+        from .repo import resolve_repository
+        from .store import Store
+
+        store = Store()
+        paths = [Path(p) for p in args.paths] or sorted(
+            p for p in (Path.home() / "br-fixtures").glob("*") if (p / ".git").exists()
+        )
+        if not paths:
+            print("No repositories given, and nothing found in ~/br-fixtures.")
+            return
+        total = 0
+        for path in paths:
+            name = resolve_repository(path)
+            resolved = npm_resolved_versions(path)
+            if not resolved:
+                print(f"  {name}: no lockfile")
+                continue
+            updated = store.apply_resolved_versions(name, resolved)
+            total += updated
+            print(f"  {name}: {updated} reference(s) pinned from "
+                  f"{len(resolved)} lockfile entry(ies)")
+        if total:
+            print(f"\n{total} reference(s) now carry a resolved version.")
+            print("Re-evaluate the alerts against them:  blastradius check --refresh")
+
     elif args.command == "alerts":
         from .store import Store
         store = Store()
@@ -146,7 +180,10 @@ def main() -> None:
                 c["repository"] for c in consumer_cache[key]
                 if not reaches or (c["version_spec"] or "(unpinned)") in reaches
             })
-            print(f"           reaches: {', '.join(reaches) or '(recorded before filtering)'}")
+            label = ", ".join(reaches) or "(recorded before filtering)"
+            exact = all(not any(ch in r for ch in "^~><*") for r in reaches) if reaches else False
+            print(f"           reaches: {label}"
+                  f"{'  (installed version)' if exact and reaches else ''}")
             if exposed:
                 print(f"           in:      {', '.join(exposed)}")
 
