@@ -177,10 +177,18 @@ actions/setup-node L6 → 1 repo: acme/checkout v4 partial deploy.yml:8
 
 Set `"format": "verbose"` for the original prose form.
 
-**Repeats within a session are suppressed.** An agent re-reads the same manifest
-constantly — before an edit, after an edit, when re-checking its work — and the
-second injection tells it nothing the first did not. In a realistic read pattern
-that is half of all injections.
+**Repeats within a session are suppressed** for `dedupe_minutes` (default 120).
+An agent re-reads the same manifest constantly — before an edit, after an edit,
+when re-checking — and the second injection tells it nothing the first did not.
+
+Suppression expires rather than lasting forever, because a session id cannot be
+fully trusted to be unique: six separate `claude -p` runs were observed sharing
+one. Without the window, a single early injection would silence that file
+permanently.
+
+**Injection needs the file to already be indexed**, so a repo's first visit
+captures and the visits after it enrich. On a corpus BlastRadius has never seen,
+pass one records and pass two starts speaking.
 
 `blastradius cost` shows what the tool is actually spending:
 

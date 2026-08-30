@@ -434,3 +434,52 @@ class TestCompactPathShortening:
                             "tool_input": {"file_path": str(root / "Dockerfile")}}
                            )["hookSpecificOutput"]["additionalContext"]
         assert "1 repo:" in ctx and "1 repos" not in ctx
+
+
+class TestDedupeExpiry:
+    """Session ids are not reliably unique — six separate `claude -p` runs were
+    observed sharing one. Suppression must expire rather than last forever."""
+
+    def _shared(self, db):
+        store = Store(db)
+        store.record("org/api", [dep("docker_image", "alpine", "3.19", "Dockerfile", 1)])
+        store.record("org/web", [dep("docker_image", "alpine", "latest", "Dockerfile", 1)])
+
+    def _read(self, root):
+        return hooks.inject({"session_id": "reused", "cwd": str(root),
+                             "tool_input": {"file_path": str(root / "Dockerfile")}})
+
+    def test_a_recent_repeat_is_suppressed(self, repo):
+        root, db = repo
+        self._shared(db)
+        self._read(root)
+        assert "hookSpecificOutput" not in self._read(root)
+
+    def test_an_old_injection_does_not_silence_a_later_one(self, repo, monkeypatch):
+        root, db = repo
+        self._shared(db)
+        self._read(root)
+        # Age the record past the window.
+        with Store(db)._conn() as conn:
+            conn.execute("UPDATE injections SET created_at = datetime('now', '-5 hours')")
+        assert "hookSpecificOutput" in self._read(root)
+
+    def test_the_window_is_configurable(self, repo, monkeypatch):
+        from blastradius.config import Config, InjectConfig
+        root, db = repo
+        self._shared(db)
+        self._read(root)
+        with Store(db)._conn() as conn:
+            conn.execute("UPDATE injections SET created_at = datetime('now', '-30 minutes')")
+        monkeypatch.setattr(hooks, "load_config",
+                            lambda: Config(inject=InjectConfig(dedupe_minutes=10)))
+        assert "hookSpecificOutput" in self._read(root)
+
+    def test_zero_disables_suppression(self, repo, monkeypatch):
+        from blastradius.config import Config, InjectConfig
+        root, db = repo
+        self._shared(db)
+        monkeypatch.setattr(hooks, "load_config",
+                            lambda: Config(inject=InjectConfig(dedupe_minutes=0)))
+        self._read(root)
+        assert "hookSpecificOutput" in self._read(root)

@@ -191,6 +191,8 @@ def main() -> None:
                 "types": list(active.inject.types),
                 "only_when_shared": active.inject.only_when_shared,
                 "min_cve_severity": active.inject.min_cve_severity,
+                "format": active.inject.format,
+                "dedupe_minutes": active.inject.dedupe_minutes,
             },
             "exclude": {
                 "repositories": list(active.exclude.repositories),

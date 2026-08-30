@@ -115,7 +115,8 @@ def inject(payload: dict[str, Any]) -> dict[str, Any]:
     # An agent re-reads the same manifest constantly — before an edit, after an
     # edit, when re-checking its work. Repeating the same block tells it nothing
     # it was not told a moment ago, and costs the same context every time.
-    if store.already_injected(session_id, repository, relative):
+    if store.already_injected(session_id, repository, relative,
+                              config.inject.dedupe_minutes):
         _debug(f"already injected for {relative!r} in this session — skipping")
         store.record_injection(session_id, repository, relative, 0, 0, suppressed=True)
         return _PASS

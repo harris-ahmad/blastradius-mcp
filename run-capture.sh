@@ -137,6 +137,9 @@ for repo in $REPOS; do
     gained=$(( after - before ))
     if [ "$gained" -gt 0 ]; then
       printf "    %s✓%s recorded %s reference(s)\n\n" "$G" "$X" "$gained"
+    elif [ -n "$(blastradius repos 2>/dev/null | grep " acme/$repo\$")" ]; then
+      # Already fully indexed — the Stop hook correctly has nothing to ask for.
+      printf "    %s✓%s already indexed, nothing new\n\n" "$G" "$X"
     else
       printf "    %s!%s session finished but nothing was recorded\n" "$Y" "$X"
       printf "      %ssee %s/.br-session.log%s\n\n" "$D" "$dir" "$X"

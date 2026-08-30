@@ -43,6 +43,9 @@ class InjectConfig:
     # "compact" drops the repeated trailing instruction and inlines consumers.
     # "verbose" is the original prose form.
     format: str = "compact"
+    # A repeat is only a repeat for so long. Session ids are not reliably
+    # unique, so suppression expires rather than lasting forever.
+    dedupe_minutes: int = 120
 
 
 @dataclass
@@ -109,6 +112,8 @@ def load(path: Path | None = None) -> Config:
         min_cve_severity=str(inject_raw.get("min_cve_severity", defaults.min_cve_severity)),
         format=("verbose" if str(inject_raw.get("format", defaults.format)) == "verbose"
                 else "compact"),
+        dedupe_minutes=max(0, int(inject_raw.get("dedupe_minutes",
+                                                 defaults.dedupe_minutes) or 0)),
     )
 
     exclude_raw = raw.get("exclude") if isinstance(raw.get("exclude"), dict) else {}
@@ -136,6 +141,7 @@ EXAMPLE = {
         "only_when_shared": True,
         "min_cve_severity": "low",
         "format": "compact",
+        "dedupe_minutes": 120,
     },
     "exclude": {
         "repositories": ["acme/internal-*"],

@@ -281,24 +281,30 @@ class Store:
             )
 
     def already_injected(self, session_id: str | None, repository: str,
-                         file_path: str) -> bool:
-        """Has this exact file already been covered in this session?
+                         file_path: str, within_minutes: int = 120) -> bool:
+        """Has this exact file already been covered, recently, in this session?
 
         Agents re-read files constantly — before an edit, after an edit, when
-        re-checking. The second injection tells the model nothing it was not
-        told ten seconds ago.
+        re-checking — and the second injection tells the model nothing it was
+        not told ten seconds ago.
+
+        The time bound matters because a session id cannot be fully trusted to
+        be unique. Observed in practice: six separate `claude -p` runs all
+        reported the same id. Without a window, one early injection would
+        silence that file forever.
         """
-        if not session_id:
-            return False
+        if not session_id or within_minutes <= 0:
+            return False        # zero means "never suppress"
         with self._conn() as conn:
             row = conn.execute(
                 """
                 SELECT 1 FROM injections
                 WHERE session_id = ? AND repository = ? AND file_path = ?
                   AND suppressed = 0
+                  AND created_at >= datetime('now', ?)
                 LIMIT 1
                 """,
-                (session_id, repository, file_path),
+                (session_id, repository, file_path, f"-{int(within_minutes)} minutes"),
             ).fetchone()
         return row is not None
 
