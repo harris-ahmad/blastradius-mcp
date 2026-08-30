@@ -5,6 +5,8 @@ import pytest
 
 from blastradius import install as inst
 
+_REAL_VERIFY = inst.verify_binary
+
 
 @pytest.fixture
 def claude_dir(tmp_path, monkeypatch):
@@ -13,6 +15,10 @@ def claude_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(d))
     monkeypatch.setattr(inst, "binary_path", lambda: "/opt/venv/bin/blastradius")
     monkeypatch.setattr(inst.shutil, "which", lambda _: None)   # no `claude` CLI
+    # These tests exercise the settings merge with a stand-in path. The guard
+    # that rejects a non-running binary is covered by TestBinaryVerification,
+    # which uses real scripts.
+    monkeypatch.setattr(inst, "verify_binary", lambda _: (True, ""))
     return d
 
 
@@ -192,6 +198,7 @@ class TestBinaryVerification:
     path. Writing it produces hooks that crash on every invocation."""
 
     def test_refuses_a_binary_that_does_not_run(self, claude_dir, tmp_path, monkeypatch, capsys):
+        monkeypatch.setattr(inst, "verify_binary", _REAL_VERIFY)
         broken = tmp_path / "broken"
         broken.write_text("#!/usr/bin/env python3\nimport nonexistent_module_xyz\n")
         broken.chmod(0o755)
@@ -202,6 +209,7 @@ class TestBinaryVerification:
         assert "Refusing to write a command that does not run" in capsys.readouterr().out
 
     def test_leaves_existing_settings_untouched_when_refusing(self, claude_dir, tmp_path, monkeypatch):
+        monkeypatch.setattr(inst, "verify_binary", _REAL_VERIFY)
         write(claude_dir, {"theme": "dark"})
         broken = tmp_path / "broken"
         broken.write_text("#!/usr/bin/env python3\nraise SystemExit(3)\n")
