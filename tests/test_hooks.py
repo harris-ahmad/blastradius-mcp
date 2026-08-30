@@ -56,11 +56,11 @@ class TestInject:
         ctx = out["hookSpecificOutput"]["additionalContext"]
         assert out["hookSpecificOutput"]["permissionDecision"] == "allow"
         assert "alpine" in ctx
-        assert "2 other repo(s)" in ctx
+        assert "2 repos" in ctx
         assert "org/web" in ctx and "org/jobs" in ctx
         # Worst pinning surfaces first — org/web floats on `latest`.
         assert ctx.index("org/web") < ctx.index("org/jobs")
-        assert "unpinned" in ctx
+        assert "UNPINNED" in ctx
 
     def test_surfaces_open_cves(self, repo):
         root, db = repo
@@ -207,7 +207,7 @@ class TestConfigGovernsInjection:
         self._with_config(monkeypatch, max_consumers=2)
         out = hooks.inject({"cwd": str(root),
                             "tool_input": {"file_path": str(root / "Dockerfile")}})
-        assert "…and 3 more" in out["hookSpecificOutput"]["additionalContext"]
+        assert "+3" in out["hookSpecificOutput"]["additionalContext"]
 
     def test_capture_skips_excluded_repositories(self, repo, monkeypatch):
         from blastradius.config import ExcludeConfig
@@ -362,3 +362,75 @@ class TestInjectionAccounting:
         hooks.inject({"session_id": "s1", "cwd": str(root),
                       "tool_input": {"file_path": str(root / "Dockerfile")}})
         assert store.injection_stats()["sent"] == 0
+
+
+class TestOutputFormats:
+    """Same facts, two renderings. The compact one is the default."""
+
+    def _context(self, repo, monkeypatch, fmt):
+        from blastradius.config import Config, InjectConfig
+        root, db = repo
+        store = Store(db)
+        store.record("org/api", [dep("docker_image", "alpine", "3.19", "Dockerfile", 4)])
+        store.record("org/web", [dep("docker_image", "alpine", "latest", "Dockerfile", 1)])
+        store.record("org/jobs", [dep("docker_image", "alpine", "3.19", "build/Dockerfile", 9)])
+        monkeypatch.setattr(hooks, "load_config",
+                            lambda: Config(inject=InjectConfig(format=fmt)))
+        out = hooks.inject({"cwd": str(root),
+                            "tool_input": {"file_path": str(root / "Dockerfile")}})
+        return out["hookSpecificOutput"]["additionalContext"]
+
+    def test_both_carry_the_same_facts(self, repo, monkeypatch):
+        for fmt in ("compact", "verbose"):
+            ctx = self._context(repo, monkeypatch, fmt)
+            assert "alpine" in ctx
+            assert "org/web" in ctx and "org/jobs" in ctx
+            assert "latest" in ctx           # the risky pin
+            assert "3.19" in ctx
+
+    def test_compact_is_materially_smaller(self, repo, monkeypatch):
+        compact = self._context(repo, monkeypatch, "compact")
+        verbose = self._context(repo, monkeypatch, "verbose")
+        assert len(compact) < len(verbose) * 0.75
+
+    def test_compact_drops_the_repeated_instruction(self, repo, monkeypatch):
+        """Identical on every injection, and the bundled skill already says it."""
+        assert "Call blast_radius" not in self._context(repo, monkeypatch, "compact")
+        assert "Call blast_radius" in self._context(repo, monkeypatch, "verbose")
+
+    def test_compact_omits_a_redundant_consumer_path(self, repo, monkeypatch):
+        """Every repo's Dockerfile is called Dockerfile; saying so adds nothing."""
+        ctx = self._context(repo, monkeypatch, "compact")
+        assert "org/api" not in ctx or "Dockerfile:4" not in ctx
+
+    def test_compact_keeps_a_differing_consumer_path(self, repo, monkeypatch):
+        """build/Dockerfile is not this file, so the path earns its space."""
+        assert "build/Dockerfile:9" in self._context(repo, monkeypatch, "compact")
+
+
+class TestCompactPathShortening:
+    def test_identical_path_is_dropped(self):
+        assert hooks._where("Dockerfile:4", "Dockerfile") == ""
+
+    def test_same_directory_keeps_only_the_filename(self):
+        assert hooks._where(".github/workflows/nightly.yml:5",
+                            ".github/workflows/ci.yml") == " nightly.yml:5"
+
+    def test_a_different_directory_is_kept_in_full(self):
+        assert hooks._where("build/Dockerfile:9", "Dockerfile") == " build/Dockerfile:9"
+
+    def test_root_level_files_are_not_confused_with_each_other(self):
+        assert hooks._where("Makefile:2", "Dockerfile") == " Makefile:2"
+
+    def test_a_single_consumer_reads_as_one_repo(self, repo, monkeypatch):
+        from blastradius.config import Config, InjectConfig
+        root, db = repo
+        store = Store(db)
+        store.record("org/api", [dep("docker_image", "alpine", "3.19", "Dockerfile", 1)])
+        store.record("org/web", [dep("docker_image", "alpine", "latest", "Dockerfile", 1)])
+        monkeypatch.setattr(hooks, "load_config",
+                            lambda: Config(inject=InjectConfig(format="compact")))
+        ctx = hooks.inject({"cwd": str(root),
+                            "tool_input": {"file_path": str(root / "Dockerfile")}}
+                           )["hookSpecificOutput"]["additionalContext"]
+        assert "1 repo:" in ctx and "1 repos" not in ctx

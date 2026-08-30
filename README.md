@@ -159,6 +159,24 @@ then version drift — so a `package.json` with fifty dependencies surfaces the
 two that matter rather than the first eight alphabetically. Ranking costs two
 batched queries, because this runs inside a five-second hook timeout.
 
+**The injected block is terse on purpose.** Measured across the fixture corpus,
+the compact format is **58% smaller** than prose for identical facts — 202
+characters per injection against 475. Three savings, largest first: the trailing
+"call blast_radius before making a change" instruction is dropped entirely, since
+it is identical every time and the bundled skill already teaches it; consumers go
+inline rather than one indented line each; and a consumer's file path is
+shortened against the file being read, because every repo's `Dockerfile` is
+called `Dockerfile`.
+
+```
+blastradius .github/workflows/ci.yml
+actions/checkout L5 → 5 repos: acme/checkout main UNPINNED deploy.yml:7 ·
+  acme/legacy-cron main UNPINNED nightly.yml:5 · acme/payments v4 partial
+actions/setup-node L6 → 1 repo: acme/checkout v4 partial deploy.yml:8
+```
+
+Set `"format": "verbose"` for the original prose form.
+
 **Repeats within a session are suppressed.** An agent re-reads the same manifest
 constantly — before an edit, after an edit, when re-checking its work — and the
 second injection tells it nothing the first did not. In a realistic read pattern

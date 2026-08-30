@@ -40,6 +40,9 @@ class InjectConfig:
     only_when_shared: bool = True
     # Advisories below this are not worth spending injected context on.
     min_cve_severity: str = "low"
+    # "compact" drops the repeated trailing instruction and inlines consumers.
+    # "verbose" is the original prose form.
+    format: str = "compact"
 
 
 @dataclass
@@ -104,6 +107,8 @@ def load(path: Path | None = None) -> Config:
         or ALL_TYPES,
         only_when_shared=bool(inject_raw.get("only_when_shared", defaults.only_when_shared)),
         min_cve_severity=str(inject_raw.get("min_cve_severity", defaults.min_cve_severity)),
+        format=("verbose" if str(inject_raw.get("format", defaults.format)) == "verbose"
+                else "compact"),
     )
 
     exclude_raw = raw.get("exclude") if isinstance(raw.get("exclude"), dict) else {}
@@ -130,6 +135,7 @@ EXAMPLE = {
         "types": list(ALL_TYPES),
         "only_when_shared": True,
         "min_cve_severity": "low",
+        "format": "compact",
     },
     "exclude": {
         "repositories": ["acme/internal-*"],

@@ -165,7 +165,7 @@ def inject(payload: dict[str, Any]) -> dict[str, Any]:
         _debug(f"ranking {len(artifacts)} artifact(s) down to "
                f"{config.inject.max_artifacts}")
 
-    lines: list[str] = []
+    entries: list[dict[str, Any]] = []
     for artifact in artifacts[:config.inject.max_artifacts]:
         others = store.consumers(
             artifact["identifier"], artifact["type"], exclude_repository=repository
@@ -180,18 +180,37 @@ def inject(payload: dict[str, Any]) -> dict[str, Any]:
         by_repo: dict[str, dict[str, Any]] = {}
         for row in others:
             entry = by_repo.setdefault(row["repository"], {
-                "spec": row["version_spec"],
+                "spec": row["resolved_version"] or row["version_spec"],
                 "pinning": classify_pinning(row["version_spec"], row["type"]),
                 "where": [],
             })
             entry["where"].append(f"{row['file_path']}:{row['line_number']}")
 
+        entries.append({"artifact": artifact, "by_repo": by_repo, "alerts": alerts})
+
+    if not entries:
+        _debug("artifacts found, but no OTHER repo consumes them and there are "
+               "no open CVEs — staying quiet is correct here")
+        return _PASS
+
+    render = _render_compact if config.inject.format == "compact" else _render_verbose
+    body = render(relative, entries, config)
+    store.record_injection(session_id, repository, relative, len(body),
+                           min(len(artifacts), config.inject.max_artifacts))
+    _debug(f"injected {len(body)} chars (~{len(body) // 4} tokens)")
+    return _context("PreToolUse", body)
+
+
+def _render_verbose(relative: str, entries: list[dict], config) -> str:
+    """The original prose form. Kept for comparison and for anyone who prefers it."""
+    lines: list[str] = []
+    for entry in entries:
+        artifact, by_repo, alerts = entry["artifact"], entry["by_repo"], entry["alerts"]
         header = f"`{artifact['identifier']}` (line {artifact['line_number']})"
         if by_repo:
-            ranked = sorted(
-                by_repo.items(),
-                key=lambda kv: -QUALITY_RANK.get(kv[1]["pinning"], 2),
-            )[:config.inject.max_consumers]
+            ranked = sorted(by_repo.items(),
+                            key=lambda kv: -QUALITY_RANK.get(kv[1]["pinning"], 2)
+                            )[:config.inject.max_consumers]
             lines.append(f"- {header} — also used by {len(by_repo)} other repo(s):")
             for name, info in ranked:
                 spec = info["spec"] or "unpinned"
@@ -200,26 +219,69 @@ def inject(payload: dict[str, Any]) -> dict[str, Any]:
                 lines.append(f"    …and {len(by_repo) - config.inject.max_consumers} more")
         else:
             lines.append(f"- {header}")
+        for alert in alerts[:3]:
+            lines.append(f"    ⚠ {alert['severity'].upper()} "
+                         f"{alert.get('cve_id') or alert.get('osv_id')}")
+
+    return (f"BlastRadius — cross-repo impact for {relative}:\n"
+            + "\n".join(lines)
+            + "\n\nChanging a version here affects the repos listed above. "
+              "Call blast_radius for the full picture before making a change.")
+
+
+def _where(reference: str, relative: str) -> str:
+    """Shorten a consumer's file reference against the file being read.
+
+    Same path entirely — every repo's Dockerfile is called Dockerfile — and it
+    says nothing, so drop it. Same directory, as with .github/workflows, and the
+    directory is the redundant half.
+    """
+    path, _, line = reference.rpartition(":")
+    if path == relative:
+        return ""
+    here, _, _ = relative.rpartition("/")
+    there, sep, base = path.rpartition("/")
+    if sep and there == here:
+        return f" {base}:{line}"
+    return f" {reference}"
+
+
+def _render_compact(relative: str, entries: list[dict], config) -> str:
+    """Same facts, less prose.
+
+    Three savings, in order of size: the trailing instruction is dropped
+    entirely — it is identical on every injection and the bundled skill already
+    teaches it; consumers go inline rather than one indented line each; and a
+    consumer's file path is omitted when it matches the file being read, which
+    it usually does (every repo's Dockerfile is called Dockerfile).
+    """
+    lines = [f"blastradius {relative}"]
+    for entry in entries:
+        artifact, by_repo, alerts = entry["artifact"], entry["by_repo"], entry["alerts"]
+        head = f"{artifact['identifier']} L{artifact['line_number']}"
+
+        if by_repo:
+            ranked = sorted(by_repo.items(),
+                            key=lambda kv: -QUALITY_RANK.get(kv[1]["pinning"], 2)
+                            )[:config.inject.max_consumers]
+            parts = []
+            for name, info in ranked:
+                spec = info["spec"] or "-"
+                pinning = info["pinning"]
+                mark = pinning.upper() if pinning == "unpinned" else pinning
+                parts.append(f"{name} {spec} {mark}{_where(info['where'][0], relative)}")
+            extra = (f" +{len(by_repo) - config.inject.max_consumers}"
+                     if len(by_repo) > config.inject.max_consumers else "")
+            noun = "repo" if len(by_repo) == 1 else "repos"
+            lines.append(f"{head} → {len(by_repo)} {noun}{extra}: " + " · ".join(parts))
+        else:
+            lines.append(head)
 
         for alert in alerts[:3]:
-            ident = alert.get("cve_id") or alert.get("osv_id")
-            lines.append(f"    ⚠ {alert['severity'].upper()} {ident}")
+            lines.append(f"  ⚠ {alert['severity'].upper()} "
+                         f"{alert.get('cve_id') or alert.get('osv_id')}")
 
-    if not lines:
-        _debug("artifacts found, but no OTHER repo consumes them and there are "
-               "no open CVEs — staying quiet is correct here")
-        return _PASS
-
-    body = (
-        f"BlastRadius — cross-repo impact for {relative}:\n"
-        + "\n".join(lines)
-        + "\n\nChanging a version here affects the repos listed above. "
-          "Call blast_radius for the full picture before making a change."
-    )
-    store.record_injection(session_id, repository, relative, len(body),
-                           min(len(artifacts), config.inject.max_artifacts))
-    _debug(f"injected {len(body)} chars (~{len(body) // 4} tokens)")
-    return _context("PreToolUse", body)
+    return "\n".join(lines)
 
 
 # ── capture: Stop ─────────────────────────────────────────────────────────────
