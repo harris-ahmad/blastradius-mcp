@@ -14,7 +14,7 @@ from typing import Callable
 
 import httpx
 
-from .osv import OsvClient
+from .osv import ECOSYSTEMS, OsvClient, package_name
 from .store import Store
 
 logger = logging.getLogger("blastradius.monitor")
@@ -35,16 +35,29 @@ def check(
     store: Store,
     client: OsvClient | None = None,
     first_run_is_silent: bool = True,
+    verbose: bool = False,
 ) -> list[dict]:
     """One monitoring cycle. Returns alerts that are new *and* worth reporting.
 
     On a first run against an existing index every historical CVE looks new, so
     they are recorded silently rather than dumped on the user at once.
     """
+    def say(message: str) -> None:
+        if verbose:
+            print(message)
+
     client = client or OsvClient()
     artifacts = store.monitorable_artifacts()
     if not artifacts:
+        total = store.stats()["artifacts"]
+        say(f"Nothing to check. OSV covers npm and GitHub Actions only, and none "
+            f"of the {total} indexed artifact(s) are those types.")
         return []
+
+    by_type: dict[str, int] = {}
+    for a in artifacts:
+        by_type[a["type"]] = by_type.get(a["type"], 0) + 1
+    say("Querying OSV for " + ", ".join(f"{n} {t}" for t, n in sorted(by_type.items())))
 
     by_id = {a["id"]: a for a in artifacts}
     is_first_run = store.stats()["open_alerts"] == 0 and first_run_is_silent
@@ -52,8 +65,29 @@ def check(
     try:
         discovered = client.discover(artifacts)
     except (httpx.HTTPError, ValueError) as exc:
-        logger.warning("OSV discovery failed: %s", exc)
+        # Print as well as log: a swallowed network error is indistinguishable
+        # from a genuinely clean result, which is the worst possible outcome for
+        # a security tool.
+        message = f"OSV request failed: {type(exc).__name__}: {exc}"
+        if verbose:
+            print(f"  ✗ {message}")
+            print("    Cannot distinguish this from 'no advisories'. Nothing recorded.")
+        else:
+            logger.warning(message)
         return []
+
+    if verbose:
+        for artifact in sorted(artifacts, key=lambda a: (a["type"], a["identifier"])):
+            found = len(discovered.get(artifact["id"], []))
+            marker = " " if found else " "
+            print(f"  {marker} {artifact['identifier']:<44} {found} advisory(ies)")
+        if not discovered:
+            print("\n  OSV returned nothing for any of them. Cross-check one directly:")
+            first = artifacts[0]
+            eco = ECOSYSTEMS.get(first["type"], "npm")
+            print(f"""    curl -s https://api.osv.dev/v1/query -d '{{"package":"""
+                  f"""{{"name":"{package_name(first['identifier'], first['type'])}","""
+                  f""""ecosystem":"{eco}"}}}}' | head -c 300""")
 
     new_alerts: list[dict] = []
     for artifact_id, osv_ids in discovered.items():
@@ -78,6 +112,11 @@ def check(
                 })
 
     new_alerts.sort(key=lambda a: -_SEVERITY_ORDER.get(a["severity"], 0))
+    if verbose and is_first_run:
+        recorded = store.stats()["open_alerts"]
+        if recorded:
+            print(f"\nFirst run — recorded {recorded} existing advisory(ies) silently, "
+                  f"so you are not flooded. Future runs report only what is new.")
     return new_alerts
 
 

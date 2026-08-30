@@ -94,7 +94,7 @@ def main() -> None:
     elif args.command == "check":
         from .monitor import check, notify
         from .store import Store
-        alerts = check(Store())
+        alerts = check(Store(), verbose=True)
         if alerts:
             notify(alerts)
         else:
