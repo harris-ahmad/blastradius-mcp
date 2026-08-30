@@ -132,3 +132,56 @@ class TestUninstall:
         inst.uninstall()
         commands = [h["command"] for g in read(claude_dir)["hooks"]["PreToolUse"] for h in g["hooks"]]
         assert commands == ["/bin/other"]
+
+
+class TestLink:
+    """The console script runs fine unactivated — only PATH is missing."""
+
+    @pytest.fixture
+    def venv_bin(self, tmp_path, monkeypatch):
+        real = tmp_path / "venv" / "bin" / "blastradius"
+        real.parent.mkdir(parents=True)
+        real.write_text("#!/usr/bin/env python3\n")
+        real.chmod(0o755)
+        monkeypatch.setattr(inst, "binary_path", lambda: str(real))
+        return real
+
+    def test_creates_the_symlink(self, venv_bin, tmp_path):
+        target = tmp_path / "bin"
+        assert inst.link(str(target)) == 0
+        assert (target / "blastradius").resolve() == venv_bin.resolve()
+
+    def test_creates_the_directory_if_absent(self, venv_bin, tmp_path):
+        target = tmp_path / "nested" / "deep" / "bin"
+        assert inst.link(str(target)) == 0
+        assert (target / "blastradius").is_symlink()
+
+    def test_is_idempotent(self, venv_bin, tmp_path):
+        target = tmp_path / "bin"
+        inst.link(str(target))
+        assert inst.link(str(target)) == 0
+        assert (target / "blastradius").resolve() == venv_bin.resolve()
+
+    def test_replaces_a_stale_symlink(self, venv_bin, tmp_path):
+        target = tmp_path / "bin"
+        target.mkdir()
+        (target / "blastradius").symlink_to(tmp_path / "gone")
+        assert inst.link(str(target)) == 0
+        assert (target / "blastradius").resolve() == venv_bin.resolve()
+
+    def test_warns_when_the_directory_is_not_on_path(self, venv_bin, tmp_path, capsys, monkeypatch):
+        monkeypatch.setenv("PATH", "/usr/bin:/bin")
+        inst.link(str(tmp_path / "bin"))
+        assert "not on your PATH" in capsys.readouterr().out
+
+    def test_quiet_when_the_directory_is_on_path(self, venv_bin, tmp_path, capsys, monkeypatch):
+        target = tmp_path / "bin"
+        target.mkdir()
+        monkeypatch.setenv("PATH", f"{target}:/usr/bin")
+        inst.link(str(target))
+        assert "not on your PATH" not in capsys.readouterr().out
+
+    def test_refuses_when_there_is_no_console_script(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setattr(inst, "binary_path", lambda: "/usr/bin/python -m blastradius.cli")
+        assert inst.link(str(tmp_path / "bin")) == 1
+        assert "no console script" in capsys.readouterr().out

@@ -39,8 +39,14 @@ One rule the tools enforce: **version specs are stored exactly as written.** `^1
 ```bash
 pip install blastradius-mcp
 blastradius install      # wires the hooks + MCP server into Claude Code
+blastradius link         # puts the CLI on PATH, so no venv activation is needed
 blastradius doctor       # verifies it, by running the hooks for real
 ```
+
+Installing from a virtualenv? The **hooks never need it activated** — `install`
+writes absolute paths, and the console script's shebang points at its own
+interpreter. `link` does the same for your own shell, so a fresh terminal tab
+just works.
 
 Once installed, one script takes you from there to ready-to-test:
 

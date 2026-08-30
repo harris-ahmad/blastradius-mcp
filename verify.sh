@@ -45,8 +45,25 @@ trap cleanup EXIT
 # ── 1. the binary and the package ────────────────────────────────────────────
 head_ "1. installation"
 
+# The console script's shebang points at its own interpreter, so it runs fine
+# without the venv being active. If PATH cannot see it, look beside this script
+# before giving up — a fresh terminal tab should not stop the run.
+if ! command -v blastradius >/dev/null 2>&1; then
+  for candidate in "$HERE/.venv/bin/blastradius" "$HERE/venv/bin/blastradius"; do
+    if [ -x "$candidate" ]; then
+      PATH="$(dirname "$candidate"):$PATH"
+      export PATH
+      warn "using $candidate (venv not active — that is fine)"
+      break
+    fi
+  done
+fi
+
 command -v blastradius >/dev/null 2>&1 || die \
-  "blastradius is not on PATH. Activate your venv, then: pip install -e \".[dev]\""
+  "blastradius is not on PATH and no venv was found beside this script.
+    python3 -m venv .venv && source .venv/bin/activate
+    pip install -e \".[dev]\"
+  Then run 'blastradius link' so new terminal tabs work without activating."
 ok "$(command -v blastradius)"
 
 if ! blastradius stats >/dev/null 2>&1; then

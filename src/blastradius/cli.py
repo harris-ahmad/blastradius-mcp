@@ -18,6 +18,8 @@ def main() -> None:
     install_cmd = sub.add_parser("install", help="Wire the hooks and MCP server into Claude Code.")
     install_cmd.add_argument("--dry-run", action="store_true",
                              help="Print the merged settings instead of writing them.")
+    link_cmd = sub.add_parser("link", help="Put the CLI on PATH so it works without the venv.")
+    link_cmd.add_argument("--to", default=None, help="Directory to link into.")
     sub.add_parser("uninstall", help="Remove the hooks and MCP server registration.")
     sub.add_parser("doctor", help="Check the wiring and prove the hooks run.")
 
@@ -50,6 +52,10 @@ def main() -> None:
     elif args.command == "install":
         from .install import install
         sys.exit(install(dry_run=args.dry_run))
+
+    elif args.command == "link":
+        from .install import link
+        sys.exit(link(args.to))
 
     elif args.command == "uninstall":
         from .install import uninstall

@@ -175,6 +175,56 @@ def _register_mcp(binary: str) -> None:
         print(f"    run: claude mcp add --scope user {SERVER_NAME} -- {binary} serve")
 
 
+def link(target_dir: str | None = None) -> int:
+    """Put the CLI on PATH permanently, without activating anything.
+
+    The console script's shebang already points at its own interpreter, so it
+    runs correctly from any shell. Only PATH is missing — a symlink is the whole
+    fix. Hooks are unaffected either way; they use absolute paths.
+    """
+    binary = binary_path()
+    if " " in binary:
+        print(f"{CROSS} no console script to link (running via `python -m`).")
+        print(f"    reinstall with: pip install -e \".[dev]\"")
+        return 1
+
+    source = Path(binary)
+    if not source.exists():
+        print(f"{CROSS} {source} does not exist")
+        return 1
+
+    path_dirs = [Path(p) for p in os.environ.get("PATH", "").split(os.pathsep) if p]
+    if target_dir:
+        destination_dir = Path(target_dir).expanduser()
+    else:
+        home_local = Path.home() / ".local" / "bin"
+        preferred = [d for d in (home_local, Path("/usr/local/bin")) if d in path_dirs]
+        destination_dir = preferred[0] if preferred else home_local
+
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    destination = destination_dir / "blastradius"
+
+    if destination.resolve() == source.resolve():
+        print(f"{TICK} already linked: {destination}")
+        return 0
+
+    if destination.exists() or destination.is_symlink():
+        destination.unlink()
+    destination.symlink_to(source)
+    print(f"{TICK} linked {destination} -> {source}")
+
+    if destination_dir not in path_dirs:
+        print(f"{WARN} {destination_dir} is not on your PATH. Add it:")
+        shell = os.environ.get("SHELL", "")
+        rc = "~/.zshrc" if "zsh" in shell else "~/.bashrc"
+        print(f'    echo \'export PATH="{destination_dir}:$PATH"\' >> {rc}')
+        print(f"    then open a new tab")
+    else:
+        print(f"  {DIM}open a new tab, or run `hash -r`, and it will resolve"
+              f" without the venv{OFF}")
+    return 0
+
+
 def uninstall() -> int:
     path = settings_path()
     settings = _load(path)
