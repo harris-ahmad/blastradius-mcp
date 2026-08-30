@@ -40,6 +40,11 @@ def main() -> None:
 
     sub.add_parser("repos", help="List indexed repositories.")
 
+    alerts_cmd = sub.add_parser("alerts", help="Open CVE alerts, and which pins they hit.")
+    alerts_cmd.add_argument("--severity", default=None,
+                            choices=["critical", "high", "medium", "low", "unknown"])
+    alerts_cmd.add_argument("--artifact", default=None)
+
     watch_cmd = sub.add_parser("watch", help="Poll OSV on an interval, forever.")
     watch_cmd.add_argument("--interval-hours", type=float, default=6.0)
 
@@ -94,6 +99,25 @@ def main() -> None:
             print(f"{count:5d}  {name}")
         if not seen:
             print("Nothing indexed yet.")
+
+    elif args.command == "alerts":
+        from .store import Store
+        rows = Store().list_alerts(severity=args.severity, identifier=args.artifact)
+        if not rows:
+            print("No open alerts.")
+            return
+        order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "unknown": 4}
+        rows.sort(key=lambda r: (order.get(r["severity"], 4), r["identifier"]))
+        for row in rows:
+            ident = row["cve_id"] or row["osv_id"]
+            print(f"[{row['severity'].upper():8}] {row['identifier']:<22} {ident}")
+            print(f"           {row['summary'][:88]}")
+            print(f"           reaches: {row['applies_to'] or '(recorded before filtering)'}")
+        counts: dict[str, int] = {}
+        for row in rows:
+            counts[row["severity"]] = counts.get(row["severity"], 0) + 1
+        print("\n" + "  ".join(f"{k}: {v}" for k, v in
+                                sorted(counts.items(), key=lambda kv: order.get(kv[0], 4))))
 
     elif args.command == "check":
         from .monitor import check, notify

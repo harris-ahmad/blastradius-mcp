@@ -115,3 +115,38 @@ class TestVersionNormalisation:
     def test_identifier_whitespace_is_trimmed(self, store):
         store.record("org/api", [dep("docker_image", " alpine ", "3.19")])
         assert store.consumers("alpine")[0]["identifier"] == "alpine"
+
+
+class TestListAlerts:
+    def _seed(self, store):
+        store.record("org/api", [
+            dep("npm_package", "lodash", "^4.17.20", "package.json"),
+            dep("npm_package", "vite", "^5.2.0", "package.json"),
+        ])
+        ids = {a["identifier"]: a["id"] for a in store.monitorable_artifacts()}
+        store.add_alert(ids["lodash"], {"id": "GHSA-1", "cve_id": "CVE-1",
+                                        "severity": "high", "summary": "s"}, ["^4.17.20"])
+        store.add_alert(ids["vite"], {"id": "GHSA-2", "cve_id": "CVE-2",
+                                      "severity": "medium", "summary": "s"}, ["^5.2.0"])
+        return store
+
+    def test_lists_every_open_alert(self, store):
+        assert len(self._seed(store).list_alerts()) == 2
+
+    def test_filters_by_severity(self, store):
+        rows = self._seed(store).list_alerts(severity="high")
+        assert [r["identifier"] for r in rows] == ["lodash"]
+
+    def test_filters_by_artifact(self, store):
+        rows = self._seed(store).list_alerts(identifier="vite")
+        assert [r["cve_id"] for r in rows] == ["CVE-2"]
+
+    def test_carries_the_specs_it_reaches(self, store):
+        rows = self._seed(store).list_alerts(identifier="lodash")
+        assert rows[0]["applies_to"] == "^4.17.20"
+
+    def test_acknowledged_alerts_are_hidden(self, store):
+        self._seed(store)
+        with store._conn() as conn:
+            conn.execute("UPDATE cve_alerts SET acknowledged_at = 'now' WHERE osv_id = 'GHSA-1'")
+        assert [r["identifier"] for r in store.list_alerts()] == ["vite"]

@@ -319,6 +319,27 @@ class Store:
             )
             return cur.rowcount > 0
 
+    def list_alerts(self, severity: str | None = None,
+                    identifier: str | None = None) -> list[dict]:
+        """Every open alert, with the artifact it belongs to."""
+        sql = """
+            SELECT a.type, a.identifier, c.osv_id, c.cve_id, c.severity,
+                   c.summary, c.url, c.applies_to, c.first_seen_at
+            FROM cve_alerts c
+            JOIN artifacts a ON a.id = c.artifact_id
+            WHERE c.acknowledged_at IS NULL
+        """
+        params: list[object] = []
+        if severity:
+            sql += " AND c.severity = ?"
+            params.append(severity)
+        if identifier:
+            sql += " AND a.identifier = ?"
+            params.append(identifier)
+        sql += " ORDER BY a.identifier, c.severity"
+        with self._conn() as conn:
+            return [dict(row) for row in conn.execute(sql, params)]
+
     def clear_alerts(self) -> int:
         """Drop every recorded alert so they can be re-evaluated.
 

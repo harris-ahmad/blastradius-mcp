@@ -105,6 +105,8 @@ no server, no API key, nothing leaves your machine.
 
 ```bash
 blastradius check                  # one cycle now
+blastradius check --refresh        # re-evaluate recorded alerts after a rule change
+blastradius alerts                 # what is open, and which pins it reaches
 blastradius watch --interval-hours 6
 ```
 
@@ -137,7 +139,7 @@ be a lie.
 
 Early. Working today: the index, the pinning classifier, both hooks, all three
 MCP tools, the CVSS scorer, the OSV monitor, and a one-command installer.
-**177 tests passing.**
+**190 tests passing.**
 
 Next: plugin marketplace packaging, and extraction quality work.
 
