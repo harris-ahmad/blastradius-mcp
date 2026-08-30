@@ -381,8 +381,8 @@ plugin manifest, and the marketplace entry, whose version is what gates a
 plugin update — so bump all three at once and let CI check they agree:
 
 ```bash
-python scripts/check-packaging.py --set-version 0.2.0
-git commit -am "Release 0.2.0" && git tag v0.2.0 && git push origin main v0.2.0
+python scripts/check-packaging.py --set-version 0.3.0
+git commit -am "Release 0.3.0" && git tag v0.3.0 && git push origin main v0.3.0
 ```
 
 The workflow checks the tag against the packaged version before it builds, and
