@@ -81,6 +81,7 @@ def inject(payload: dict[str, Any]) -> dict[str, Any]:
     tool_input = payload.get("tool_input") or {}
     file_path = tool_input.get("file_path")
     cwd = payload.get("cwd") or "."
+    session_id = payload.get("session_id")
 
     if not file_path:
         _debug("no file_path in tool_input — nothing to look up")
@@ -110,6 +111,15 @@ def inject(payload: dict[str, Any]) -> dict[str, Any]:
         relative = Path(file_path).name
 
     store = Store()
+
+    # An agent re-reads the same manifest constantly — before an edit, after an
+    # edit, when re-checking its work. Repeating the same block tells it nothing
+    # it was not told a moment ago, and costs the same context every time.
+    if store.already_injected(session_id, repository, relative):
+        _debug(f"already injected for {relative!r} in this session — skipping")
+        store.record_injection(session_id, repository, relative, 0, 0, suppressed=True)
+        return _PASS
+
     _debug(f"looking up {repository!r} / {relative!r} in {store.db_path}")
     artifacts = store.artifacts_in_file(repository, relative)
     if not artifacts:
@@ -206,6 +216,9 @@ def inject(payload: dict[str, Any]) -> dict[str, Any]:
         + "\n\nChanging a version here affects the repos listed above. "
           "Call blast_radius for the full picture before making a change."
     )
+    store.record_injection(session_id, repository, relative, len(body),
+                           min(len(artifacts), config.inject.max_artifacts))
+    _debug(f"injected {len(body)} chars (~{len(body) // 4} tokens)")
     return _context("PreToolUse", body)
 
 

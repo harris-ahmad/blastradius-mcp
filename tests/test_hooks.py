@@ -269,3 +269,96 @@ class TestRelevanceRanking:
         assert context.index("vite") < context.index("lodash")   # CVE ranks first
         for name in "abcdefgh":
             assert f"`{name}`" not in context
+
+
+class TestSessionDeduplication:
+    """Agents re-read manifests constantly. The second injection tells them
+    nothing the first did not, and costs the same context."""
+
+    def _shared(self, db):
+        store = Store(db)
+        store.record("org/api", [dep("docker_image", "alpine", "3.19", "Dockerfile", 1)])
+        store.record("org/web", [dep("docker_image", "alpine", "latest", "Dockerfile", 1)])
+
+    def _read(self, root, session="s1"):
+        return hooks.inject({"session_id": session, "cwd": str(root),
+                             "tool_input": {"file_path": str(root / "Dockerfile")}})
+
+    def test_first_read_injects(self, repo):
+        root, db = repo
+        self._shared(db)
+        assert "hookSpecificOutput" in self._read(root)
+
+    def test_second_read_in_the_same_session_is_silent(self, repo):
+        root, db = repo
+        self._shared(db)
+        self._read(root)
+        assert "hookSpecificOutput" not in self._read(root)
+
+    def test_a_new_session_injects_again(self, repo):
+        root, db = repo
+        self._shared(db)
+        self._read(root, "s1")
+        assert "hookSpecificOutput" in self._read(root, "s2")
+
+    def test_a_different_file_still_injects(self, repo):
+        root, db = repo
+        store = Store(db)
+        store.record("org/api", [dep("docker_image", "alpine", "3.19", "Dockerfile", 1),
+                                 dep("github_action", "actions/checkout", "v4",
+                                     ".github/workflows/ci.yml", 1)])
+        store.record("org/web", [dep("docker_image", "alpine", "latest", "Dockerfile", 1),
+                                 dep("github_action", "actions/checkout", "main",
+                                     ".github/workflows/ci.yml", 1)])
+        self._read(root)
+        out = hooks.inject({"session_id": "s1", "cwd": str(root),
+                            "tool_input": {"file_path": str(root / ".github/workflows/ci.yml")}})
+        assert "hookSpecificOutput" in out
+
+    def test_without_a_session_id_it_cannot_dedupe(self, repo):
+        """No session means no way to know it is a repeat — inject rather than
+        silently withhold."""
+        root, db = repo
+        self._shared(db)
+        first = hooks.inject({"cwd": str(root),
+                              "tool_input": {"file_path": str(root / "Dockerfile")}})
+        second = hooks.inject({"cwd": str(root),
+                               "tool_input": {"file_path": str(root / "Dockerfile")}})
+        assert "hookSpecificOutput" in first
+        assert "hookSpecificOutput" in second
+
+
+class TestInjectionAccounting:
+    def test_what_was_sent_is_recorded(self, repo):
+        root, db = repo
+        store = Store(db)
+        store.record("org/api", [dep("docker_image", "alpine", "3.19", "Dockerfile", 1)])
+        store.record("org/web", [dep("docker_image", "alpine", "latest", "Dockerfile", 1)])
+        out = hooks.inject({"session_id": "s1", "cwd": str(root),
+                            "tool_input": {"file_path": str(root / "Dockerfile")}})
+
+        stats = store.injection_stats()
+        assert stats["sent"] == 1
+        assert stats["sessions"] == 1
+        # The recorded size must match what actually went to the model.
+        assert stats["characters"] == len(out["hookSpecificOutput"]["additionalContext"])
+
+    def test_suppressed_repeats_are_counted_separately(self, repo):
+        root, db = repo
+        store = Store(db)
+        store.record("org/api", [dep("docker_image", "alpine", "3.19", "Dockerfile", 1)])
+        store.record("org/web", [dep("docker_image", "alpine", "latest", "Dockerfile", 1)])
+        for _ in range(4):
+            hooks.inject({"session_id": "s1", "cwd": str(root),
+                          "tool_input": {"file_path": str(root / "Dockerfile")}})
+        stats = store.injection_stats()
+        assert stats["sent"] == 1
+        assert stats["suppressed"] == 3
+
+    def test_a_quiet_hook_costs_nothing_and_records_nothing(self, repo):
+        root, db = repo
+        store = Store(db)
+        store.record("org/api", [dep("docker_image", "alpine", "3.19", "Dockerfile", 1)])
+        hooks.inject({"session_id": "s1", "cwd": str(root),
+                      "tool_input": {"file_path": str(root / "Dockerfile")}})
+        assert store.injection_stats()["sent"] == 0

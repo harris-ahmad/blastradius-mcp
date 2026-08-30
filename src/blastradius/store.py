@@ -121,6 +121,20 @@ class Store:
                     UNIQUE(artifact_id, osv_id)
                 );
 
+                CREATE TABLE IF NOT EXISTS injections (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id  TEXT,
+                    repository  TEXT NOT NULL,
+                    file_path   TEXT NOT NULL,
+                    characters  INTEGER NOT NULL,
+                    artifacts   INTEGER NOT NULL,
+                    suppressed  INTEGER NOT NULL DEFAULT 0,
+                    created_at  TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_injections_session
+                    ON injections(session_id, file_path);
+                CREATE INDEX IF NOT EXISTS idx_injections_time ON injections(created_at);
                 CREATE INDEX IF NOT EXISTS idx_deps_artifact ON dependencies(artifact_id);
                 CREATE INDEX IF NOT EXISTS idx_deps_repo     ON dependencies(repository_id);
                 CREATE INDEX IF NOT EXISTS idx_deps_path     ON dependencies(file_path);
@@ -247,6 +261,101 @@ class Store:
                     (repository, file_path),
                 )
             ]
+
+    # ── Injection accounting ──────────────────────────────────────────────────
+
+    def record_injection(self, session_id: str | None, repository: str, file_path: str,
+                         characters: int, artifacts: int, suppressed: bool = False) -> None:
+        """Log what injection cost. It is the one price this tool charges on
+        every session, and until it is measured it cannot be argued about."""
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO injections
+                    (session_id, repository, file_path, characters, artifacts,
+                     suppressed, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (session_id, repository, file_path, characters, artifacts,
+                 int(suppressed), _now()),
+            )
+
+    def already_injected(self, session_id: str | None, repository: str,
+                         file_path: str) -> bool:
+        """Has this exact file already been covered in this session?
+
+        Agents re-read files constantly — before an edit, after an edit, when
+        re-checking. The second injection tells the model nothing it was not
+        told ten seconds ago.
+        """
+        if not session_id:
+            return False
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT 1 FROM injections
+                WHERE session_id = ? AND repository = ? AND file_path = ?
+                  AND suppressed = 0
+                LIMIT 1
+                """,
+                (session_id, repository, file_path),
+            ).fetchone()
+        return row is not None
+
+    def injection_stats(self, days: int | None = None) -> dict:
+        where, params = "", []
+        if days:
+            where = "WHERE created_at >= datetime('now', ?)"
+            params = [f"-{int(days)} days"]
+
+        with self._conn() as conn:
+            totals = conn.execute(
+                f"""
+                SELECT
+                    COUNT(*) FILTER (WHERE suppressed = 0)              AS sent,
+                    COUNT(*) FILTER (WHERE suppressed = 1)              AS suppressed,
+                    COALESCE(SUM(characters) FILTER (WHERE suppressed = 0), 0) AS chars,
+                    COALESCE(SUM(characters) FILTER (WHERE suppressed = 1), 0) AS saved,
+                    COUNT(DISTINCT session_id)                          AS sessions
+                FROM injections {where}
+                """,
+                params,
+            ).fetchone()
+
+            by_repo = conn.execute(
+                f"""
+                SELECT repository,
+                       COUNT(*) FILTER (WHERE suppressed = 0) AS sent,
+                       COALESCE(SUM(characters) FILTER (WHERE suppressed = 0), 0) AS chars
+                FROM injections {where}
+                GROUP BY repository
+                HAVING sent > 0
+                ORDER BY chars DESC
+                """,
+                params,
+            ).fetchall()
+
+            by_file = conn.execute(
+                f"""
+                SELECT repository, file_path,
+                       COUNT(*) FILTER (WHERE suppressed = 0) AS sent,
+                       COALESCE(SUM(characters) FILTER (WHERE suppressed = 0), 0) AS chars
+                FROM injections {where}
+                GROUP BY repository, file_path
+                HAVING sent > 0
+                ORDER BY chars DESC
+                LIMIT 10
+                """,
+                params,
+            ).fetchall()
+
+        return {
+            "sent": totals["sent"], "suppressed": totals["suppressed"],
+            "characters": totals["chars"], "characters_saved": totals["saved"],
+            "sessions": totals["sessions"],
+            "by_repository": [dict(r) for r in by_repo],
+            "by_file": [dict(r) for r in by_file],
+        }
 
     def impact_summary(self, keys: list[tuple[str, str]],
                        exclude_repository: str | None = None) -> dict[tuple[str, str], dict]:

@@ -46,6 +46,10 @@ def main() -> None:
 
     sub.add_parser("repos", help="List indexed repositories.")
 
+    cost_cmd = sub.add_parser("cost", help="What injection has spent on context.")
+    cost_cmd.add_argument("--days", type=int, default=None,
+                          help="Limit to the last N days (default: all time).")
+
     config_cmd = sub.add_parser("config", help="Show or create the config file.")
     config_cmd.add_argument("--init", action="store_true",
                             help="Write a commented example config, without overwriting.")
@@ -127,6 +131,44 @@ def main() -> None:
             print(f"{count:5d}  {name}")
         if not seen:
             print("Nothing indexed yet.")
+
+    elif args.command == "cost":
+        from .store import Store
+        stats = Store().injection_stats(args.days)
+        if not stats["sent"] and not stats["suppressed"]:
+            print("No injections recorded yet.")
+            return
+
+        # Claude's tokenizer is not available locally, so this is an estimate.
+        # ~3.8 chars/token suits this content — paths, versions and punctuation
+        # tokenize denser than prose.
+        def tok(chars): return round(chars / 3.8)
+
+        window = f"last {args.days} day(s)" if args.days else "all time"
+        print(f"Injection cost, {window}\n")
+        print(f"  {stats['sent']} injection(s) across {stats['sessions']} session(s)")
+        print(f"  {stats['characters']:,} characters  ≈ {tok(stats['characters']):,} tokens")
+        if stats["sent"]:
+            per = stats["characters"] / stats["sent"]
+            print(f"  {per:.0f} characters each  ≈ {tok(per):.0f} tokens")
+        if stats["suppressed"]:
+            saved = stats["sent"] and (stats["characters"] / stats["sent"]) * stats["suppressed"]
+            print(f"\n  {stats['suppressed']} repeat(s) suppressed within a session")
+            print(f"  ≈ {tok(saved):,.0f} tokens not spent re-telling the same thing")
+
+        if stats["by_repository"]:
+            print("\n  By repository")
+            for row in stats["by_repository"]:
+                print(f"    {row['chars']:>8,} ch  ≈{tok(row['chars']):>6,} tok  "
+                      f"{row['sent']:>3}x  {row['repository']}")
+        if stats["by_file"]:
+            print("\n  Most expensive files")
+            for row in stats["by_file"][:5]:
+                print(f"    {row['chars']:>8,} ch  {row['sent']:>3}x  "
+                      f"{row['repository']}:{row['file_path']}")
+        print("\n  Token counts are estimates — Claude's tokenizer is not "
+              "available locally.")
+        print("  Tune with: blastradius config  (max_artifacts, max_consumers, types)")
 
     elif args.command == "config":
         from .config import CONFIG_PATH, EXAMPLE, load

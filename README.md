@@ -118,6 +118,7 @@ previous file is backed up first. `uninstall` reverses it cleanly.
 | `blastradius watch` | Poll on an interval, in the foreground |
 | `blastradius service install` | Run the watcher in the background, across reboots |
 | `blastradius service stop` / `start` / `uninstall` | Pause it, resume it, remove it |
+| `blastradius cost [--days N]` | What injection has spent on context, and what dedupe saved |
 | `blastradius repos` / `stats` / `doctor` | Index and wiring state |
 
 The MCP tools are `blast_radius`, `hygiene` and `record_dependencies`. `type`
@@ -157,6 +158,29 @@ are ranked before truncation — an open advisory dominates, then breadth of use
 then version drift — so a `package.json` with fifty dependencies surfaces the
 two that matter rather than the first eight alphabetically. Ranking costs two
 batched queries, because this runs inside a five-second hook timeout.
+
+**Repeats within a session are suppressed.** An agent re-reads the same manifest
+constantly — before an edit, after an edit, when re-checking its work — and the
+second injection tells it nothing the first did not. In a realistic read pattern
+that is half of all injections.
+
+`blastradius cost` shows what the tool is actually spending:
+
+```
+  4 injection(s) across 2 session(s)
+  1,270 characters  ≈ 334 tokens
+  318 characters each  ≈ 84 tokens
+
+  4 repeat(s) suppressed within a session
+  ≈ 334 tokens not spent re-telling the same thing
+
+  Most expensive files
+       736 ch    2x  acme/web:package.json
+```
+
+Token figures are estimates — Claude's tokenizer is not available locally, so
+this uses ~3.8 characters per token, which suits paths and version strings
+better than the usual prose ratio. The character counts are exact.
 
 Exclusions govern capture as well as injection. Dependency names are usually
 dull, but a private repository name or an internal registry hostname is not, so
