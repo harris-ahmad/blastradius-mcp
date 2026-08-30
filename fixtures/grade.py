@@ -11,6 +11,10 @@ Three numbers that matter, per repo and overall:
 
 `specs` is the one to watch. A model that quietly normalises `^18.2.0` to
 `18.2.0` scores full recall while destroying the signal the whole tool is for.
+
+All three gate the exit code. A stripped operator is a regression in exactly
+the way a missing artifact is, and the number that only gets printed is the
+number that stops being read.
 """
 from __future__ import annotations
 
@@ -123,9 +127,13 @@ def grade(db_path: str | None, verbose: bool) -> int:
     need = totals["required"]
     pct = (100 * totals["found"] / need) if need else 0
     spec_pct = (100 * totals["spec_ok"] / totals["found"]) if totals["found"] else 0
-    print(f"{BOLD}recall{OFF}  {totals['found']}/{need}  ({pct:.0f}%)")
-    print(f"{BOLD}specs{OFF}   {totals['spec_ok']}/{totals['found']}  ({spec_pct:.0f}% kept intact)")
-    print(f"{BOLD}traps{OFF}   {totals['traps']} false positive(s)")
+    recall_colour = GREEN if totals["found"] == need else RED
+    spec_colour = GREEN if totals["spec_ok"] == totals["found"] else RED
+    trap_colour = GREEN if totals["traps"] == 0 else RED
+    print(f"{BOLD}recall{OFF}  {recall_colour}{totals['found']}/{need}{OFF}  ({pct:.0f}%)")
+    print(f"{BOLD}specs{OFF}   {spec_colour}{totals['spec_ok']}/{totals['found']}{OFF}  "
+          f"({spec_pct:.0f}% kept intact)")
+    print(f"{BOLD}traps{OFF}   {trap_colour}{totals['traps']}{OFF} false positive(s)")
     if totals["unindexed"]:
         print(f"{DIM}{totals['unindexed']} repo(s) not indexed yet{OFF}")
 
@@ -137,7 +145,9 @@ def grade(db_path: str | None, verbose: bool) -> int:
     elif problems:
         print(f"\n{DIM}{len(problems)} problems — rerun with --verbose{OFF}")
 
-    return 0 if (totals["traps"] == 0 and totals["found"] == need) else 1
+    return 0 if (totals["traps"] == 0
+                 and totals["found"] == need
+                 and totals["spec_ok"] == totals["found"]) else 1
 
 
 if __name__ == "__main__":

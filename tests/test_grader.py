@@ -39,11 +39,14 @@ def first(value):
 
 
 def perfect_index(db_path: Path, skip: tuple[str, str] | None = None,
-                  plant_trap: str | None = None) -> Store:
+                  plant_trap: str | None = None,
+                  strip_spec: tuple[str, str] | None = None) -> Store:
     """An index containing exactly what the ground truth requires.
 
     `skip` drops one (repo, identifier) so recall must fall; `plant_trap`
-    records one forbidden identifier so the trap count must rise.
+    records one forbidden identifier so the trap count must rise;
+    `strip_spec` drops the range operator from one pin so specs must fall
+    while recall and traps stay perfect.
     """
     store = Store(db_path)
     for repo, spec in REPOS.items():
@@ -52,10 +55,13 @@ def perfect_index(db_path: Path, skip: tuple[str, str] | None = None,
             identifier = first(want["identifier"])
             if skip == (repo, identifier):
                 continue
+            version = first(want["version_spec"])
+            if strip_spec == (repo, identifier):
+                version = (version or "").lstrip("^~>= ") or None
             deps.append(Dependency(
                 type=want["type"],
                 identifier=identifier,
-                version_spec=first(want["version_spec"]),
+                version_spec=version,
                 file_path="synthetic",
                 line_number=line,
             ))
@@ -98,6 +104,19 @@ def test_a_forbidden_identifier_fails_as_a_trap(tmp_path, capsys):
     assert "traps   1 false positive(s)" in out
 
 
+def test_one_stripped_operator_is_enough_to_fail(tmp_path, capsys):
+    """The realistic regression is one pin, not the whole corpus."""
+    db = tmp_path / "index.db"
+    perfect_index(db, strip_spec=("acme/checkout", "express"))
+
+    assert grade(str(db), verbose=False) == 1
+
+    out = plain(capsys.readouterr().out)
+    assert "recall  39/39" in out
+    assert "specs   38/39" in out
+    assert "express spec is '4.19.2', expected '^4.19.2'" in out
+
+
 def test_an_empty_index_is_reported_rather_than_scored(tmp_path, capsys):
     db = tmp_path / "index.db"
     Store(db)
@@ -106,12 +125,11 @@ def test_an_empty_index_is_reported_rather_than_scored(tmp_path, capsys):
     assert "index is empty" in plain(capsys.readouterr().out)
 
 
-def test_a_stripped_range_operator_is_reported_but_does_not_fail(tmp_path, capsys):
+def test_a_stripped_range_operator_fails(tmp_path, capsys):
     """The failure the grader exists for: full recall, destroyed signal.
 
-    The exit code covers misses and traps only, as the README says, so this
-    scores 39/39 and exits 0 while every operator is gone. The specs line and
-    the per-artifact problems are where it shows.
+    Recall is a perfect 39/39 here and no trap is tripped. Only the specs
+    number moves, so it has to gate the exit code or this passes silently.
     """
     db = tmp_path / "index.db"
     store = Store(db)
@@ -125,10 +143,11 @@ def test_a_stripped_range_operator_is_reported_but_does_not_fail(tmp_path, capsy
             for line, want in enumerate(spec["required"], start=1)
         ])
 
-    assert grade(str(db), verbose=False) == 0
+    assert grade(str(db), verbose=False) == 1
 
     out = plain(capsys.readouterr().out)
-    assert "recall  39/39" in out
+    assert "recall  39/39" in out           # recall alone would have passed it
+    assert "traps   0 false positive(s)" in out
     assert "(74% kept intact)" in out
     assert "express spec is '4.19.2', expected '^4.19.2'" in out
 

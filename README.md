@@ -281,7 +281,9 @@ traps   0 false positive(s)
 
 **`specs` is the one that matters.** A model that quietly normalises `^18.2.0` to
 `18.2.0` scores full recall while destroying the exact signal the tool reports
-on. `grade.py` exits non-zero on any miss or trap.
+on. `grade.py` exits non-zero on a miss, a trap, *or* a stripped operator —
+all three, because the number that only gets printed is the number that stops
+being read.
 
 Scoring a real run needs Claude, so it stays a local step. What CI does check
 is everything around it: `fixtures/check-corpus.py` generates the corpus and
