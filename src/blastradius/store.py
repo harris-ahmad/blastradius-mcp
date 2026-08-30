@@ -12,6 +12,11 @@ Two schema changes from the original BlastRadius, both load-bearing:
    That also removes the duplicate-artifact problem the original had to write a
    migration for, since artifacts no longer carry a nullable version in their
    uniqueness constraint.
+
+3. GitHub Action identifiers are truncated to owner/repo on the way in. A
+   reusable workflow is written in full, so the same workflow called from two
+   repos produced two unrelated artifacts and neither had a blast radius. See
+   `canonical_identifier`.
 """
 from __future__ import annotations
 
@@ -49,11 +54,51 @@ class Dependency:
         object.__setattr__(self, "version_spec", cleaned or None)
         resolved = (self.resolved_version or "").strip()
         object.__setattr__(self, "resolved_version", resolved or None)
-        object.__setattr__(self, "identifier", self.identifier.strip())
+        object.__setattr__(self, "identifier",
+                           canonical_identifier(self.type, self.identifier.strip()))
 
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def canonical_identifier(artifact_type: str, identifier: str) -> str:
+    """Reduce an artifact name to the thing that is actually shared across repos.
+
+    A GitHub Action lives at owner/repo; anything after that is a path inside
+    it. A reusable workflow written in full —
+    `acme/.github/.github/workflows/deploy.yml` — names the same repository as
+    `acme/.github`, and recording the long form means the two never match and
+    OSV is queried for a package that cannot exist.
+
+    Only github_action is truncated. Docker images legitimately carry deeper
+    paths (`gcr.io/distroless/static-debian12`), as do Terraform submodules.
+    """
+    if artifact_type != "github_action":
+        return identifier
+    parts = [p for p in identifier.split("/") if p]
+    if len(parts) <= 2:
+        return identifier
+    return f"{parts[0]}/{parts[1]}"
+
+
+def identifier_candidates(identifier: str, artifact_type: str | None = None) -> list[str]:
+    """Every stored form a lookup for `identifier` should match.
+
+    Recording canonicalises, but a caller asks with whatever the file said. A
+    query for `acme/.github/.github/workflows/deploy.yml` has to find the row
+    stored as `acme/.github`, or the reusable workflow looks unused.
+
+    The truncated form is only offered when the type permits it — for
+    docker_image, `gcr.io/distroless/static-debian12` must not also match a
+    row named `gcr.io/distroless`.
+    """
+    candidates = [identifier]
+    if artifact_type in (None, "github_action"):
+        truncated = canonical_identifier("github_action", identifier)
+        if truncated != identifier:
+            candidates.append(truncated)
+    return candidates
 
 
 class Store:
@@ -230,9 +275,11 @@ class Store:
             FROM dependencies d
             JOIN artifacts    a ON a.id = d.artifact_id
             JOIN repositories r ON r.id = d.repository_id
-            WHERE a.identifier = ?
+            WHERE a.identifier IN ({placeholders})
         """
-        params: list[object] = [identifier]
+        names = identifier_candidates(identifier, artifact_type)
+        sql = sql.format(placeholders=", ".join("?" * len(names)))
+        params: list[object] = list(names)
         if artifact_type:
             sql += " AND a.type = ?"
             params.append(artifact_type)
@@ -517,8 +564,9 @@ class Store:
             sql += " AND c.severity = ?"
             params.append(severity)
         if identifier:
-            sql += " AND a.identifier = ?"
-            params.append(identifier)
+            names = identifier_candidates(identifier)
+            sql += f" AND a.identifier IN ({', '.join('?' * len(names))})"
+            params.extend(names)
         sql += " ORDER BY a.identifier, c.severity"
         with self._conn() as conn:
             return [dict(row) for row in conn.execute(sql, params)]
@@ -577,9 +625,11 @@ class Store:
                    c.applies_to
             FROM cve_alerts c
             JOIN artifacts a ON a.id = c.artifact_id
-            WHERE a.identifier = ? AND c.acknowledged_at IS NULL
+            WHERE a.identifier IN ({placeholders}) AND c.acknowledged_at IS NULL
         """
-        params: list[object] = [identifier]
+        names = identifier_candidates(identifier, artifact_type)
+        sql = sql.format(placeholders=", ".join("?" * len(names)))
+        params: list[object] = list(names)
         if artifact_type:
             sql += " AND a.type = ?"
             params.append(artifact_type)

@@ -1,6 +1,7 @@
 import pytest
 
-from blastradius.store import Dependency, Store
+from blastradius.store import (Dependency, Store, canonical_identifier,
+                              identifier_candidates)
 
 
 @pytest.fixture
@@ -116,6 +117,70 @@ class TestVersionNormalisation:
         store.record("org/api", [dep("docker_image", " alpine ", "3.19")])
         assert store.consumers("alpine")[0]["identifier"] == "alpine"
 
+
+class TestCanonicalIdentifier:
+    """A reusable workflow is written as owner/repo/.github/workflows/x.yml, but
+    the thing shared across repos — and the thing OSV knows about — is owner/repo."""
+
+    @pytest.mark.parametrize("raw,expected", [
+        ("acme/.github/.github/workflows/deploy.yml", "acme/.github"),
+        ("octo/infra/.github/workflows/ci.yml", "octo/infra"),
+        ("org/repo/subdir", "org/repo"),
+        ("actions/checkout", "actions/checkout"),
+        ("docker://alpine:3.18", "docker://alpine:3.18"),
+    ])
+    def test_actions_truncate_to_owner_repo(self, raw, expected):
+        assert canonical_identifier("github_action", raw) == expected
+
+    @pytest.mark.parametrize("type_,raw", [
+        ("docker_image", "gcr.io/distroless/static-debian12"),
+        ("terraform_module", "terraform-aws-modules/vpc/aws//modules/vpc-endpoints"),
+        ("npm_package", "@scope/pkg"),
+        ("helm_chart", "bitnami/postgresql"),
+    ])
+    def test_other_types_are_left_alone(self, type_, raw):
+        assert canonical_identifier(type_, raw) == raw
+
+    def test_the_long_and_short_forms_land_on_one_artifact(self, store):
+        """Before canonicalisation these were two artifacts, so a workflow shared
+        by two repos looked like it had one consumer each."""
+        store.record("acme/api", [dep("github_action", "acme/.github/.github/workflows/deploy.yml",
+                                      "v1", ".github/workflows/release.yml", 4)])
+        store.record("acme/web", [dep("github_action", "acme/.github",
+                                      "v1", ".github/workflows/release.yml", 4)])
+
+        consumers = store.consumers("acme/.github", artifact_type="github_action")
+        assert {c["repository"] for c in consumers} == {"acme/api", "acme/web"}
+
+    def test_a_lookup_by_the_long_form_finds_the_canonical_row(self, store):
+        store.record("acme/api", [dep("github_action", "acme/.github",
+                                      "v2", ".github/workflows/release.yml", 4)])
+
+        found = store.consumers("acme/.github/.github/workflows/deploy.yml",
+                                artifact_type="github_action")
+        assert [c["repository"] for c in found] == ["acme/api"]
+
+    def test_a_deep_docker_path_does_not_match_its_prefix(self, store):
+        """Truncation is an Actions rule. Widening it to Docker would let a
+        query for a distroless image match an unrelated shorter one."""
+        store.record("acme/api", [dep("docker_image", "gcr.io/distroless", "latest")])
+
+        found = store.consumers("gcr.io/distroless/static-debian12",
+                                artifact_type="docker_image")
+        assert found == []
+
+    def test_candidates_offer_the_truncation_only_where_it_applies(self):
+        long = "acme/.github/.github/workflows/deploy.yml"
+        assert identifier_candidates(long, "github_action") == [long, "acme/.github"]
+        assert identifier_candidates(long) == [long, "acme/.github"]
+        assert identifier_candidates(long, "docker_image") == [long]
+        assert identifier_candidates("actions/checkout", "github_action") == ["actions/checkout"]
+
+    def test_a_bare_action_without_an_owner_is_untouched(self):
+        assert canonical_identifier("github_action", "checkout") == "checkout"
+
+    def test_empty_path_segments_do_not_shift_the_split(self):
+        assert canonical_identifier("github_action", "acme//infra//x.yml") == "acme/infra"
 
 class TestListAlerts:
     def _seed(self, store):

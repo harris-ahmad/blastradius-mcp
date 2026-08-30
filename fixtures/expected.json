@@ -39,7 +39,7 @@
     "optional": [
       {"type": "docker_image", "identifier": "node", "version_spec": "20-bookworm-slim"},
       {"type": "npm_package", "identifier": "vitest", "version_spec": "*"},
-      {"type": "github_action", "identifier": ["acme/.github", "acme/.github/.github/workflows/deploy.yml"], "version_spec": "v2"}
+      {"type": "github_action", "identifier": "acme/.github", "version_spec": "v2"}
     ]
   },
 
