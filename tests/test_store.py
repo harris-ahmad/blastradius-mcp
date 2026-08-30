@@ -98,3 +98,20 @@ def test_all_dependencies_powers_the_repos_listing(store):
     store.record("org/web", [dep("npm_package", "react", "^18.2.0", "package.json")])
     repos = {row["repository"] for row in store.all_dependencies()}
     assert repos == {"org/api", "org/web"}
+
+
+class TestVersionNormalisation:
+    """'No version' arrives as null, '' or '   ' depending on the writer."""
+
+    @pytest.mark.parametrize("raw", [None, "", "   ", "\t"])
+    def test_absent_versions_all_become_none(self, store, raw):
+        store.record("org/api", [dep("docker_image", "ubuntu", raw)])
+        assert store.consumers("ubuntu")[0]["version_spec"] is None
+
+    def test_a_real_spec_keeps_its_operator(self, store):
+        store.record("org/api", [dep("npm_package", "react", "  ^18.2.0  ", "package.json")])
+        assert store.consumers("react")[0]["version_spec"] == "^18.2.0"
+
+    def test_identifier_whitespace_is_trimmed(self, store):
+        store.record("org/api", [dep("docker_image", " alpine ", "3.19")])
+        assert store.consumers("alpine")[0]["identifier"] == "alpine"

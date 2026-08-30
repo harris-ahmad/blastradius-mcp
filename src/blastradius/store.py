@@ -39,6 +39,13 @@ class Dependency:
     file_path: str
     line_number: int
 
+    def __post_init__(self) -> None:
+        # An absent version arrives as null, "" or "   " depending on who is
+        # writing. Normalise at the boundary so nothing downstream has to guess.
+        cleaned = (self.version_spec or "").strip()
+        object.__setattr__(self, "version_spec", cleaned or None)
+        object.__setattr__(self, "identifier", self.identifier.strip())
+
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()

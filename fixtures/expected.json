@@ -91,7 +91,7 @@
     "required": [
       {"type": "docker_image", "identifier": "alpine", "version_spec": "latest"},
       {"type": "docker_image", "identifier": "redis", "version_spec": "latest"},
-      {"type": "docker_image", "identifier": "ubuntu", "version_spec": null},
+      {"type": "docker_image", "identifier": "ubuntu", "version_spec": [null, "latest"]},
       {"type": "github_action", "identifier": "actions/checkout", "version_spec": "main"},
       {"type": "github_action", "identifier": "actions/cache", "version_spec": "v3"}
     ],

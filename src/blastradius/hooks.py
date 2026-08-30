@@ -197,8 +197,15 @@ def capture(payload: dict[str, Any]) -> dict[str, Any]:
         f"in the cross-repo index:\n"
         + "\n".join(f"  {p}" for p in shown)
         + (f"\n  …and {len(unseen) - len(shown)} more" if len(unseen) > len(shown) else "")
-        + "\n\nRead them and call record_dependencies to index them. Pass each "
-          "version_spec exactly as written — keep `^`, `~>`, `>=` intact."
+        + "\n\nRead them and call record_dependencies to index them.\n"
+          "\n"
+          "Record only what resolves from OUTSIDE this repository. Skip anything "
+          "local or vendored, because it has no cross-repo blast radius: relative "
+          "paths (./ or ../), file:// and workspace: protocols, github: and git "
+          "URL refs, and multi-stage build stage aliases (FROM <earlier-stage>).\n"
+          "\n"
+          "Pass each version_spec exactly as written — keep `^`, `~>`, `>=` "
+          "intact. They are the signal; normalising them destroys it."
     )
     return _context("Stop", body)
 
