@@ -42,6 +42,17 @@ blastradius install      # wires the hooks + MCP server into Claude Code
 blastradius doctor       # verifies it, by running the hooks for real
 ```
 
+Once installed, one script takes you from there to ready-to-test:
+
+```bash
+./verify.sh                 # checks wiring, builds fixtures, proves inject fires
+./verify.sh --reset-index   # ...and wipes the index first, for a clean measurement
+```
+
+It fails fast with the specific fix for each problem rather than a stack trace,
+proves the push lane using a throwaway index so your real one is never touched,
+and ends by printing the exact sessions to run.
+
 Working on it locally:
 
 ```bash
