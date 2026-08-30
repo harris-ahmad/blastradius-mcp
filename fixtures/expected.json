@@ -1,0 +1,101 @@
+{
+  "_readme": [
+    "Ground truth for the fixture corpus.",
+    "required  — must be extracted. Missing one is a recall failure.",
+    "forbidden — must NOT be extracted. Finding one is a false positive:",
+    "            stage aliases, local paths, heredoc text, workspace protocols.",
+    "optional  — defensible either way. Neither rewarded nor penalised.",
+    "identifier and version_spec accept a list when more than one form is fair."
+  ],
+
+  "acme/payments": {
+    "required": [
+      {"type": "docker_image", "identifier": "golang", "version_spec": "1.22-alpine"},
+      {"type": "docker_image", "identifier": "gcr.io/distroless/static-debian12", "version_spec": "nonroot"},
+      {"type": "github_action", "identifier": "actions/checkout", "version_spec": "v4"},
+      {"type": "github_action", "identifier": "actions/setup-go", "version_spec": "f111f3307d8850f501ac008e886eec1fd1932a34"},
+      {"type": "terraform_module", "identifier": "terraform-aws-modules/vpc/aws", "version_spec": "5.1.2"},
+      {"type": "terraform_module", "identifier": "terraform-aws-modules/rds/aws", "version_spec": ["~> 6.3", "~>6.3"]}
+    ],
+    "forbidden": ["builder", "test", "./modules/tags", "modules/tags", "./.github/actions/local-cache"],
+    "optional": [
+      {"type": "docker_image", "identifier": "aquasec/trivy", "version_spec": "0.50.1"}
+    ]
+  },
+
+  "acme/checkout": {
+    "required": [
+      {"type": "npm_package", "identifier": "express", "version_spec": "^4.19.2"},
+      {"type": "npm_package", "identifier": "react", "version_spec": "^18.2.0"},
+      {"type": "npm_package", "identifier": "lodash", "version_spec": "4.17.21"},
+      {"type": "npm_package", "identifier": "redis", "version_spec": "~4.6.13"},
+      {"type": "npm_package", "identifier": "left-pad", "version_spec": [">=1.3.0 <2.0.0", ">=1.3.0", ">=1.3.0 <2.0.0"]},
+      {"type": "npm_package", "identifier": "typescript", "version_spec": "5.4.5"},
+      {"type": "github_action", "identifier": "actions/checkout", "version_spec": "main"},
+      {"type": "github_action", "identifier": "actions/setup-node", "version_spec": "v4"}
+    ],
+    "forbidden": ["deps", "runtime", "ghost", "${BASE_IMAGE}", "BASE_IMAGE",
+                  "@acme/shared-ui", "patched-lib"],
+    "optional": [
+      {"type": "docker_image", "identifier": "node", "version_spec": "20-bookworm-slim"},
+      {"type": "npm_package", "identifier": "vitest", "version_spec": "*"},
+      {"type": "github_action", "identifier": ["acme/.github", "acme/.github/.github/workflows/deploy.yml"], "version_spec": "v2"}
+    ]
+  },
+
+  "acme/web": {
+    "required": [
+      {"type": "docker_image", "identifier": "node", "version_spec": "20-alpine"},
+      {"type": "docker_image", "identifier": "nginx", "version_spec": "1.27-alpine"},
+      {"type": "npm_package", "identifier": "react", "version_spec": "18.3.1"},
+      {"type": "npm_package", "identifier": "react-dom", "version_spec": "18.3.1"},
+      {"type": "npm_package", "identifier": "lodash", "version_spec": "^4.17.20"},
+      {"type": "npm_package", "identifier": "vite", "version_spec": "^5.2.0"},
+      {"type": "github_action", "identifier": "actions/checkout", "version_spec": "v3"},
+      {"type": "github_action", "identifier": "actions/setup-node", "version_spec": "v4"}
+    ],
+    "forbidden": ["build"],
+    "optional": []
+  },
+
+  "acme/platform-infra": {
+    "required": [
+      {"type": "terraform_module", "identifier": "terraform-aws-modules/vpc/aws", "version_spec": "5.1.2"},
+      {"type": "terraform_module", "identifier": "terraform-aws-modules/vpc/aws//modules/vpc-endpoints", "version_spec": [">= 5.0.0", ">=5.0.0"]},
+      {"type": "terraform_module", "identifier": "terraform-aws-modules/autoscaling/aws", "version_spec": "7.4.1"},
+      {"type": "github_action", "identifier": "actions/checkout", "version_spec": "v4"},
+      {"type": "github_action", "identifier": "hashicorp/setup-terraform", "version_spec": "v3"}
+    ],
+    "forbidden": ["../modules/tags", "./modules/tags", "modules/tags"],
+    "optional": [
+      {"type": "terraform_module", "identifier": ["acme/tf-modules", "github.com/acme/tf-modules"], "version_spec": "v3.1.0"},
+      {"type": "terraform_module", "identifier": ["acme/tf-eks", "github.com/acme/tf-eks"], "version_spec": "v1.9.0"}
+    ]
+  },
+
+  "acme/notifications": {
+    "required": [
+      {"type": "helm_chart", "identifier": ["redis", "bitnami/redis"], "version_spec": "19.6.4"},
+      {"type": "helm_chart", "identifier": ["kube-prometheus-stack", "prometheus-community/kube-prometheus-stack"], "version_spec": "58.2.1"},
+      {"type": "docker_image", "identifier": "registry.internal.acme.io:5000/base-python", "version_spec": "3.11.9"},
+      {"type": "npm_package", "identifier": "lodash", "version_spec": "^4.17.21"},
+      {"type": "npm_package", "identifier": "commander", "version_spec": "~12.0.0"},
+      {"type": "github_action", "identifier": "actions/checkout", "version_spec": "v4"},
+      {"type": "github_action", "identifier": "azure/setup-helm", "version_spec": "v4"}
+    ],
+    "forbidden": ["local-sidecar", "file://../sidecar", "registry.internal.acme.io"],
+    "optional": []
+  },
+
+  "acme/legacy-cron": {
+    "required": [
+      {"type": "docker_image", "identifier": "alpine", "version_spec": "latest"},
+      {"type": "docker_image", "identifier": "redis", "version_spec": "latest"},
+      {"type": "docker_image", "identifier": "ubuntu", "version_spec": null},
+      {"type": "github_action", "identifier": "actions/checkout", "version_spec": "main"},
+      {"type": "github_action", "identifier": "actions/cache", "version_spec": "v3"}
+    ],
+    "forbidden": [],
+    "optional": []
+  }
+}
