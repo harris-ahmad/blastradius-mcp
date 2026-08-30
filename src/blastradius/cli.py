@@ -124,7 +124,12 @@ def main() -> None:
             name = resolve_repository(path)
             resolved = npm_resolved_versions(path)
             if not resolved:
-                print(f"  {name}: no lockfile")
+                # Name what was looked for: the usual causes are a pnpm project
+                # (unsupported), a repo with no JS at all, or dependencies that
+                # were never installed.
+                print(f"  {name}: no package-lock.json or yarn.lock under {path}")
+                if (path / "pnpm-lock.yaml").exists():
+                    print("     found pnpm-lock.yaml, which is not supported yet")
                 continue
             updated = store.apply_resolved_versions(name, resolved)
             total += updated
