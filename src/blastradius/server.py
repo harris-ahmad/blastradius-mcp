@@ -102,7 +102,10 @@ def record_dependencies(
                     "github_action, helm_chart, npm_package), identifier, "
                     "version_spec, file_path, line_number. Pass version_spec EXACTLY "
                     "as written in the file — '^18.2.0', '~> 5.0', 'v4'. Do not strip "
-                    "range operators; they are the whole signal."
+                    "range operators; they are the whole signal. Pass identifier "
+                    "exactly as written too: a Terraform submodule keeps its '//path' "
+                    "suffix, so 'terraform-aws-modules/vpc/aws//modules/vpc-endpoints' "
+                    "is recorded in full and not shortened to its parent module."
     )],
     owner: str | None = None,
     root_path: Annotated[str | None, Field(

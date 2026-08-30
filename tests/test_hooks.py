@@ -89,6 +89,21 @@ class TestCapture:
         assert ".github/workflows/ci.yml" in ctx
         assert "record_dependencies" in ctx
 
+    def test_it_asks_for_both_strings_verbatim(self, repo):
+        """Both rules were measured on the fixture corpus, not guessed.
+
+        Without the version_spec rule the model normalises `^18.2.0` to
+        `18.2.0`; without the identifier rule it shortens a Terraform
+        submodule to its parent, which silently merges two blast radii.
+        Trimming either sentence to save tokens costs recall, and the loss
+        is invisible until a scoring run.
+        """
+        root, _ = repo
+        ctx = hooks.capture({"cwd": str(root)})["hookSpecificOutput"]["additionalContext"]
+        assert "version_spec exactly as written" in ctx
+        assert "identifier exactly as written" in ctx
+        assert "//modules/vpc-endpoints" in ctx
+
     def test_quiet_once_everything_is_indexed(self, repo):
         root, db = repo
         Store(db).record("org/api", [
