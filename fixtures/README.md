@@ -60,3 +60,22 @@ expectation cannot be scored against another's row.
 `blastradius consumers redis` should show all three. `blastradius consumers redis
 --type npm_package` should show only `acme/checkout`. If the unfiltered call
 merges them into one blast radius, the `(type, identifier)` key has regressed.
+
+## When a hook stays quiet
+
+Both hooks pass through silently by design, so "nothing happened" is ambiguous:
+an empty index, an unresolvable repo, a file that is genuinely uninteresting,
+and a crash all look identical from the outside.
+
+```bash
+BLASTRADIUS_DEBUG=1 blastradius hook inject < payload.json
+```
+
+It narrates every decision to stderr and prints a traceback instead of
+swallowing it:
+
+```
+[blastradius] repository resolved as 'acme/payments'
+[blastradius] looking up 'acme/payments' / 'Dockerfile' in ~/.blastradius/index.db
+[blastradius] the index is EMPTY — nothing has been captured yet
+```

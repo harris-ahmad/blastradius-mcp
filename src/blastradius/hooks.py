@@ -13,6 +13,7 @@ capture → Stop. The session touched manifests; flag anything the index has not
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,19 @@ MAX_ARTIFACTS_SHOWN = 8
 MAX_CONSUMERS_PER_ARTIFACT = 5
 
 _PASS = {"continue": True, "suppressOutput": True}
+
+DEBUG = bool(os.environ.get("BLASTRADIUS_DEBUG"))
+
+
+def _debug(message: str) -> None:
+    """Say why a hook stayed quiet.
+
+    Both hooks pass through silently by design, so 'nothing happened' is
+    ambiguous: no matching artifacts, an unresolvable repo, and a genuine crash
+    all look identical. BLASTRADIUS_DEBUG=1 tells them apart.
+    """
+    if DEBUG:
+        print(f"[blastradius] {message}", file=sys.stderr)
 
 
 def _emit(payload: dict[str, Any]) -> None:
@@ -51,12 +65,18 @@ def inject(payload: dict[str, Any]) -> dict[str, Any]:
     file_path = tool_input.get("file_path")
     cwd = payload.get("cwd") or "."
 
-    if not file_path or not is_manifest(file_path):
+    if not file_path:
+        _debug("no file_path in tool_input — nothing to look up")
+        return _PASS
+    if not is_manifest(file_path):
+        _debug(f"not a manifest file: {file_path}")
         return _PASS
 
     repository = resolve_repository(cwd)
     if not repository:
+        _debug(f"could not resolve a repository from cwd: {cwd}")
         return _PASS
+    _debug(f"repository resolved as {repository!r}")
 
     root = repo_root(cwd)
     try:
@@ -65,9 +85,25 @@ def inject(payload: dict[str, Any]) -> dict[str, Any]:
         relative = Path(file_path).name
 
     store = Store()
+    _debug(f"looking up {repository!r} / {relative!r} in {store.db_path}")
     artifacts = store.artifacts_in_file(repository, relative)
     if not artifacts:
+        stats = store.stats()
+        if not stats["references"]:
+            _debug("the index is EMPTY — nothing has been captured yet")
+        else:
+            known = sorted({
+                row["file_path"] for row in store.all_dependencies()
+                if row["repository"] == repository
+            })
+            if known:
+                _debug(f"no artifacts recorded for this file. "
+                       f"{repository} has: {', '.join(known)}")
+            else:
+                _debug(f"{repository!r} is not in the index "
+                       f"(index holds {stats['repositories']} repo(s))")
         return _PASS
+    _debug(f"{len(artifacts)} artifact(s) in this file")
 
     lines: list[str] = []
     for artifact in artifacts[:MAX_ARTIFACTS_SHOWN]:
@@ -107,6 +143,8 @@ def inject(payload: dict[str, Any]) -> dict[str, Any]:
             lines.append(f"    ⚠ {alert['severity'].upper()} {ident}")
 
     if not lines:
+        _debug("artifacts found, but no OTHER repo consumes them and there are "
+               "no open CVEs — staying quiet is correct here")
         return _PASS
 
     body = (
@@ -131,12 +169,15 @@ def capture(payload: dict[str, Any]) -> dict[str, Any]:
     cwd = payload.get("cwd") or "."
     repository = resolve_repository(cwd)
     if not repository:
+        _debug(f"could not resolve a repository from cwd: {cwd}")
         return _PASS
 
     root = repo_root(cwd)
     manifests = find_manifests(root)
     if not manifests:
+        _debug(f"no manifest files found under {root}")
         return _PASS
+    _debug(f"{len(manifests)} manifest(s) under {root}")
 
     store = Store()
     known = {row["file_path"] for row in store.all_dependencies()
@@ -147,6 +188,7 @@ def capture(payload: dict[str, Any]) -> dict[str, Any]:
         if m.relative_to(root).as_posix() not in known
     ]
     if not unseen:
+        _debug(f"every manifest in {repository} is already indexed")
         return _PASS
 
     shown = unseen[:20]
@@ -178,4 +220,9 @@ def run(name: str) -> None:
         payload = json.loads(raw) if raw.strip() else {}
         _emit(handler(payload))
     except Exception:
+        if DEBUG:
+            import traceback
+            traceback.print_exc()
+        else:
+            _debug("crashed — rerun with BLASTRADIUS_DEBUG=1 for the traceback")
         _emit(_PASS)
