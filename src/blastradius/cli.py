@@ -181,9 +181,14 @@ def main() -> None:
             key = (row["identifier"], row["type"])
             if key not in consumer_cache:
                 consumer_cache[key] = store.consumers(row["identifier"], row["type"])
+            # Match on the same label the filter used: a lockfile-resolved
+            # version where one exists, the spec otherwise. Comparing against
+            # the spec alone drops any repo whose alert was matched by its
+            # resolved version — under-reporting who is exposed.
             exposed = sorted({
                 c["repository"] for c in consumer_cache[key]
-                if not reaches or (c["version_spec"] or "(unpinned)") in reaches
+                if not reaches
+                or (c.get("resolved_version") or c["version_spec"] or "(unpinned)") in reaches
             })
             label = ", ".join(reaches) or "(recorded before filtering)"
             exact = all(not any(ch in r for ch in "^~><*") for r in reaches) if reaches else False

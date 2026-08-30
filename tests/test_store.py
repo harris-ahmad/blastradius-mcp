@@ -186,3 +186,29 @@ class TestResolvedVersions:
     def test_backfill_ignores_non_npm_artifacts(self, store):
         store.record("org/api", [dep("docker_image", "node", "20-alpine", "Dockerfile")])
         assert store.apply_resolved_versions("org/api", {"node": "20.11.0"}) == 0
+
+
+class TestResolvedVersionReachesReaders:
+    """The alert listing matches consumers against the same label the filter
+    used. Comparing on the spec alone hides repos matched by their lockfile."""
+
+    def test_consumers_expose_the_resolved_version(self, store):
+        store.record("acme/web", [Dependency(
+            "npm_package", "lodash", "^4.17.20", "package.json", 6,
+            resolved_version="4.17.21")])
+        row = store.consumers("lodash")[0]
+        assert row["version_spec"] == "^4.17.20"
+        assert row["resolved_version"] == "4.17.21"
+
+    def test_a_repo_matched_by_its_lockfile_is_still_findable(self, store):
+        """acme/web pins ^4.17.20 but installs 4.17.21, so an advisory that
+        reaches 4.17.21 reaches web — even though its spec says otherwise."""
+        store.record("acme/web", [Dependency(
+            "npm_package", "lodash", "^4.17.20", "package.json", 6,
+            resolved_version="4.17.21")])
+        reaches = {"4.17.21"}
+        exposed = {
+            c["repository"] for c in store.consumers("lodash")
+            if (c.get("resolved_version") or c["version_spec"]) in reaches
+        }
+        assert exposed == {"acme/web"}
