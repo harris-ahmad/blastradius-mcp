@@ -498,3 +498,67 @@ class TestDedupeExpiry:
                             lambda: Config(inject=InjectConfig(dedupe_minutes=0)))
         self._read(root)
         assert "hookSpecificOutput" in self._read(root)
+
+
+class TestBashInjection:
+    """The gap that made "the agent is always told" false.
+
+    An agent does not only reach for Read. It runs `cat package.json`, and it
+    bumps a dependency with `npm install react@19` — which rewrites
+    package.json without ever going through Edit. A matcher of Read|Edit sees
+    none of it, so the first real request that used the shell got no injection
+    at all while the tool reported itself healthy.
+    """
+
+    def _seed(self, db):
+        Store(db).record("org/api", [
+            dep("npm_package", "react", "^18.2.0", "package.json")])
+        Store(db).record("org/other", [
+            dep("npm_package", "react", "^18.2.0", "package.json")])
+
+    def test_a_cat_of_a_manifest_injects(self, repo):
+        root, db = repo
+        self._seed(db)
+        out = hooks.inject({"cwd": str(root), "session_id": "s1",
+                            "tool_input": {"command": "cat package.json"}})
+        assert "react" in out["hookSpecificOutput"]["additionalContext"]
+
+    def test_a_package_manager_install_injects(self, repo):
+        """The react-19 case: npm rewrites package.json, never Edit."""
+        root, db = repo
+        self._seed(db)
+        out = hooks.inject({"cwd": str(root), "session_id": "s2",
+                            "tool_input": {"command": "npm install react@19"}})
+        assert "react" in out["hookSpecificOutput"]["additionalContext"]
+
+    def test_an_ordinary_shell_command_is_silent(self, repo):
+        root, db = repo
+        self._seed(db)
+        for command in ("ls -la", "git status", "python -m pytest -q", "echo hi"):
+            assert "hookSpecificOutput" not in hooks.inject(
+                {"cwd": str(root), "session_id": "s3",
+                 "tool_input": {"command": command}})
+
+    def test_an_ordinary_command_costs_no_database_work(self, repo, monkeypatch):
+        """Bash fires on every shell command, so a miss must bail before the
+        config and the index are touched — otherwise the hook taxes the whole
+        session for the 99% of commands that are not manifests."""
+        root, db = repo
+        self._seed(db)
+
+        def explode(*a, **k):
+            raise AssertionError("a non-manifest command reached the store")
+        monkeypatch.setattr(hooks, "Store", explode)
+
+        assert "hookSpecificOutput" not in hooks.inject(
+            {"cwd": str(root), "session_id": "s4",
+             "tool_input": {"command": "git log --oneline -5"}})
+
+    def test_file_path_still_wins_when_present(self, repo):
+        """Read and Edit keep naming their own target."""
+        root, db = repo
+        self._seed(db)
+        out = hooks.inject({"cwd": str(root), "session_id": "s5",
+                            "tool_input": {"file_path": str(root / "package.json"),
+                                           "command": "irrelevant"}})
+        assert "react" in out["hookSpecificOutput"]["additionalContext"]

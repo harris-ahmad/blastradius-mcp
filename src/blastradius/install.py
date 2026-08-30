@@ -73,7 +73,7 @@ def verify_binary(binary: str) -> tuple[bool, str]:
 def hook_entries(binary: str) -> dict[str, list[dict]]:
     return {
         "PreToolUse": [{
-            "matcher": "Read|Edit",
+            "matcher": "Read|Edit|Bash",
             "hooks": [{"type": "command", "command": f"{binary} hook inject", "timeout": 5}],
         }],
         "Stop": [{

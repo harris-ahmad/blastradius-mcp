@@ -74,12 +74,20 @@ thinks to or not:
 
 | Lane | Mechanism | Fires |
 |---|---|---|
-| **Push** | `PreToolUse` on `Read`/`Edit` | Agent opens a manifest → cross-repo impact injected unprompted |
+| **Push** | `PreToolUse` on `Read`/`Edit`/`Bash` | Agent opens a manifest → cross-repo impact injected unprompted |
 | **Capture** | `Stop` | Session ends → unindexed manifests flagged for recording |
 | **Pull** | MCP tools | Agent asks: `blast_radius`, `hygiene`, `record_dependencies` |
 | **Watch** | Daemon | OSV polling on an interval, with local alerts |
 
 Only the asking is optional.
+
+`Bash` is matched too, and it is the one that matters. An agent does not only
+reach for `Read`: it runs `cat package.json`, and it bumps a dependency with
+`npm install react@19`, which rewrites the manifest without ever touching
+`Edit`. Matching only `Read`/`Edit` made "the agent is always told" false in
+exactly the cases where the agent was about to change something. A shell
+command that names no manifest returns before the config or the index is
+touched, so the common case costs a process and nothing else.
 
 ## Extraction is the model's job
 

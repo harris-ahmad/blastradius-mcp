@@ -3,10 +3,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import signal
 import sys
 
 
 def main() -> None:
+    # `blastradius cost | head` closes the pipe early, and the default Python
+    # handler turns that into a traceback on a command that worked fine.
+    # Restoring the default disposition makes the process end quietly, the way
+    # every other command-line tool does.
+    if hasattr(signal, "SIGPIPE"):
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+
     parser = argparse.ArgumentParser(prog="blastradius")
     sub = parser.add_subparsers(dest="command", required=True)
 

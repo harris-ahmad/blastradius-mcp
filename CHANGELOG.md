@@ -11,7 +11,21 @@ the six-repository corpus in `fixtures/`, which has 39 required artifacts and
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Injection missed anything the agent did through the shell.** The
+  `PreToolUse` matcher was `Read|Edit`, so `cat package.json` and
+  `npm install react@19` — which rewrites the manifest without going through
+  `Edit` — produced no injection at all, while `doctor` reported the tool
+  healthy. Found by running an ordinary "bump react to 19" against an indexed
+  corpus and getting zero recorded injections for that repository. The matcher
+  now includes `Bash`, and the hook resolves the manifest from the command
+  string, inferring `package.json` for package-manager invocations that imply
+  it. A command naming no manifest returns before the config or the index is
+  touched. Re-run of the same scenario after the change: injection fires on
+  `acme/web:package.json`, ~42 tokens, and the agent surfaces the other
+  consumer unprompted.
+- `blastradius cost | head` raised `BrokenPipeError` instead of ending quietly.
 
 ## [0.2.0] — 2026-08-30
 

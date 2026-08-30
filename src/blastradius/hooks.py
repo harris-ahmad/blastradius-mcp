@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import load as load_config
-from .repo import find_manifests, is_manifest, repo_root, resolve_repository, unread_manifests
+from .repo import (find_manifests, is_manifest, manifest_in_command, repo_root, resolve_repository, unread_manifests)
 from .scoring import QUALITY_RANK, classify_pinning
 from .store import Store
 
@@ -84,7 +84,14 @@ def inject(payload: dict[str, Any]) -> dict[str, Any]:
     session_id = payload.get("session_id")
 
     if not file_path:
-        _debug("no file_path in tool_input — nothing to look up")
+        # Read and Edit name their target. Bash does not — the manifest is
+        # somewhere inside the command string, or implied by it.
+        file_path = manifest_in_command(tool_input.get("command"))
+        if file_path:
+            _debug(f"manifest named in a shell command: {file_path}")
+
+    if not file_path:
+        _debug("no manifest in tool_input — nothing to look up")
         return _PASS
     if not is_manifest(file_path):
         _debug(f"not a manifest file: {file_path}")
