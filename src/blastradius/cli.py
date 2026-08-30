@@ -15,6 +15,12 @@ def main() -> None:
     hook = sub.add_parser("hook", help="Run a hook handler (reads JSON on stdin).")
     hook.add_argument("name", choices=["inject", "capture"])
 
+    install_cmd = sub.add_parser("install", help="Wire the hooks and MCP server into Claude Code.")
+    install_cmd.add_argument("--dry-run", action="store_true",
+                             help="Print the merged settings instead of writing them.")
+    sub.add_parser("uninstall", help="Remove the hooks and MCP server registration.")
+    sub.add_parser("doctor", help="Check the wiring and prove the hooks run.")
+
     sub.add_parser("stats", help="Show what is currently indexed.")
     sub.add_parser("check", help="Run one CVE check against OSV now.")
 
@@ -40,6 +46,18 @@ def main() -> None:
     elif args.command == "hook":
         from .hooks import run
         run(args.name)
+
+    elif args.command == "install":
+        from .install import install
+        sys.exit(install(dry_run=args.dry_run))
+
+    elif args.command == "uninstall":
+        from .install import uninstall
+        sys.exit(uninstall())
+
+    elif args.command == "doctor":
+        from .install import doctor
+        sys.exit(doctor())
 
     elif args.command == "stats":
         from .store import Store

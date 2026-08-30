@@ -37,12 +37,22 @@ One rule the tools enforce: **version specs are stored exactly as written.** `^1
 ## Install
 
 ```bash
-uv tool install blastradius-mcp
+pip install blastradius-mcp
+blastradius install      # wires the hooks + MCP server into Claude Code
+blastradius doctor       # verifies it, by running the hooks for real
 ```
 
-Then add the plugin, or wire it manually into `~/.claude/settings.json` from `plugin/hooks.json` and `plugin/.mcp.json`.
+`install` merges into `~/.claude/settings.json` rather than overwriting it —
+existing keys and other people's hooks are preserved, re-running never
+duplicates, and the previous file is backed up first. `blastradius uninstall`
+reverses it cleanly. Use `--dry-run` to see the merge before it happens.
 
-Everything is local: one SQLite file at `~/.blastradius/index.db`. No account, no server, no API key, nothing leaves your machine.
+It writes an absolute path to the binary, because hooks inherit Claude Code's
+environment rather than your shell's, and a bare `blastradius` that fails to
+resolve fails *silently* — indistinguishable from a hook with nothing to say.
+
+Everything is local: one SQLite file at `~/.blastradius/index.db`. No account,
+no server, no API key, nothing leaves your machine.
 
 ## Tools
 
@@ -78,7 +88,8 @@ be a lie.
 ## Status
 
 Early. Working today: the index, the pinning classifier, both hooks, all three
-MCP tools, the CVSS scorer, and the OSV monitor. **89 tests passing.**
+MCP tools, the CVSS scorer, the OSV monitor, and a one-command installer.
+**102 tests passing.**
 
 Next: plugin marketplace packaging, and extraction quality work.
 
