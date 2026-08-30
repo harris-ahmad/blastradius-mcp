@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import load as load_config
-from .repo import find_manifests, is_manifest, repo_root, resolve_repository
+from .repo import find_manifests, is_manifest, repo_root, resolve_repository, unread_manifests
 from .scoring import QUALITY_RANK, classify_pinning
 from .store import Store
 
@@ -315,12 +315,11 @@ def capture(payload: dict[str, Any]) -> dict[str, Any]:
     store = Store()
     known = {row["file_path"] for row in store.all_dependencies()
              if row["repository"] == repository}
-    unseen = [
-        path for path in (m.relative_to(root).as_posix() for m in manifests)
-        if path not in known and not config.exclude.path(path)
-    ]
+    unseen = unread_manifests(root, repository, known,
+                              store.last_scanned(repository),
+                              exclude=config.exclude.path)
     if not unseen:
-        _debug(f"every manifest in {repository} is already indexed")
+        _debug(f"every manifest in {repository} has been read")
         return _PASS
 
     shown = unseen[:20]

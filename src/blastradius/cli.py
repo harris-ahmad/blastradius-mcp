@@ -29,6 +29,20 @@ def main() -> None:
     service_cmd.add_argument("--interval-hours", type=float, default=6.0)
     sub.add_parser("doctor", help="Check the wiring and prove the hooks run.")
 
+    index_cmd = sub.add_parser(
+        "index",
+        help="Fill the index from repositories you already have on disk.")
+    index_cmd.add_argument("directory",
+                           help="Directory containing your repositories, e.g. ~/code")
+    index_cmd.add_argument("--dry-run", action="store_true",
+                           help="List what would be indexed, start no sessions.")
+    index_cmd.add_argument("--limit", type=int, default=None,
+                           help="Index at most this many repositories.")
+    index_cmd.add_argument("--force", action="store_true",
+                           help="Re-run even for repositories already fully indexed.")
+    index_cmd.add_argument("--timeout", type=int, default=300,
+                           help="Seconds to allow each session (default: 300).")
+
     sub.add_parser("stats", help="Show what is currently indexed.")
     check_cmd = sub.add_parser("check", help="Run one CVE check against OSV now.")
     check_cmd.add_argument("--refresh", action="store_true",
@@ -105,6 +119,11 @@ def main() -> None:
     elif args.command == "doctor":
         from .install import doctor
         sys.exit(doctor())
+
+    elif args.command == "index":
+        from .bootstrap import index
+        sys.exit(index(args.directory, dry_run=args.dry_run, limit=args.limit,
+                       timeout=args.timeout, force=args.force))
 
     elif args.command == "stats":
         from .store import Store

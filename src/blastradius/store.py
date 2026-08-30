@@ -188,6 +188,7 @@ class Store:
             )
             self._ensure_column(conn, "cve_alerts", "applies_to", "TEXT")
             self._ensure_column(conn, "dependencies", "resolved_version", "TEXT")
+            self._ensure_column(conn, "repositories", "last_scanned_at", "TEXT")
 
     @staticmethod
     def _ensure_column(conn: sqlite3.Connection, table: str, column: str, sql_type: str) -> None:
@@ -218,6 +219,14 @@ class Store:
                 """,
                 (repository, root_path, owner, _now()),
             )
+            # A manifest that declares nothing external — a local Terraform
+            # module holding one variable, say — produces no rows however
+            # carefully it is read. Without a record of *when we looked*, it
+            # stays "not yet indexed" forever, and every later pass pays to
+            # read it again. The scan stamp is what makes "looked at, nothing
+            # there" distinguishable from "never looked at".
+            conn.execute("UPDATE repositories SET last_scanned_at = ? WHERE name = ?",
+                         (_now(), repository))
             repo_id = conn.execute(
                 "SELECT id FROM repositories WHERE name = ?", (repository,)
             ).fetchone()["id"]
@@ -467,6 +476,15 @@ class Store:
                 summary[key]["worst_severity"] = row["severity"]
 
         return summary
+
+    def last_scanned(self, repository: str) -> str | None:
+        """When this repository's manifests were last read, if ever."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT last_scanned_at FROM repositories WHERE name = ?",
+                (repository,),
+            ).fetchone()
+        return row["last_scanned_at"] if row else None
 
     def all_dependencies(self) -> list[dict]:
         with self._conn() as conn:

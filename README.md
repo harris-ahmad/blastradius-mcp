@@ -132,6 +132,20 @@ that disturbs that path produces `ModuleNotFoundError` while the console script
 sits there looking fine.
 </details>
 
+Then fill the index from the repositories you already have:
+
+```bash
+blastradius index ~/code        # --dry-run first to see what it would read
+```
+
+Without this the tool is correct and completely silent for days. Capture runs
+at Stop, *after* the reads, and cross-repo impact needs a second repository
+before it has anything to say — so a fresh install shows you nothing until you
+have opened two repos and gone back to the first. `index` runs one headless
+Claude session per repository and lets the same Stop hook do the capture, so a
+bootstrapped index is the same index the hooks would have built, only sooner.
+On the fixture corpus it scores identically: 39/39 recall, 39/39 specs, 0 traps.
+
 Everything is local: one SQLite file at `~/.blastradius/index.db`. No account, no
 server, no API key, nothing leaves your machine.
 
@@ -140,6 +154,11 @@ your other hooks and settings survive, re-running never duplicates, and the
 previous file is backed up first. `uninstall` reverses it cleanly.
 
 ## Commands
+
+`blastradius index <dir>` — bootstrap from repos on disk. `--dry-run` lists what
+it would read, `--limit N` caps it, `--force` re-reads what is already indexed.
+Sessions are read-only: Write, Edit and Bash are denied, so it cannot modify a
+repository it was only asked to look at.
 
 | Command | Does |
 |---|---|
@@ -334,7 +353,7 @@ the grader cannot quietly start reporting a number nobody can check.
 ## Status
 
 Early, but complete across all four lanes and verified end to end on two
-machines. **305 tests**, run on Python 3.11–3.13 in CI, which also builds the
+machines. **322 tests**, run on Python 3.11–3.13 in CI, which also builds the
 distributions and installs the wheel on a machine that has never seen the
 source.
 
@@ -357,9 +376,18 @@ python fixtures/check-corpus.py     # generator and ground truth still match
 claude plugin validate .            # marketplace + plugin manifests
 ```
 
-Releases are cut by tag — `git tag v0.1.0 && git push origin v0.1.0` — which
-builds, checks the tag against the packaged version, and publishes to PyPI
-through a trusted publisher. There is no API token anywhere in the repo.
+Releases are cut by tag. The version lives in three files — pyproject, the
+plugin manifest, and the marketplace entry, whose version is what gates a
+plugin update — so bump all three at once and let CI check they agree:
+
+```bash
+python scripts/check-packaging.py --set-version 0.2.0
+git commit -am "Release 0.2.0" && git tag v0.2.0 && git push origin main v0.2.0
+```
+
+The workflow checks the tag against the packaged version before it builds, and
+publishes through a PyPI trusted publisher. There is no API token anywhere in
+the repo. PyPI never lets a version be re-used, so a number spent is spent.
 
 Two things that bite, both now detected automatically:
 

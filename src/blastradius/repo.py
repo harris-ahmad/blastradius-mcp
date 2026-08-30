@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+from datetime import datetime
 from pathlib import Path
 
 _SSH_RE = re.compile(r"^git@[^:]+:(?P<path>.+?)(?:\.git)?$")
@@ -95,3 +96,43 @@ def find_manifests(root: str | Path, limit: int = 500) -> list[Path]:
         if is_manifest(path):
             found.append(path)
     return found
+
+
+def unread_manifests(root, repository, known_paths, last_scanned,
+                     exclude=None) -> list[str]:
+    """Manifests worth spending a read on, relative to the repo root.
+
+    A file qualifies when the index holds nothing from it AND either the
+    repository has never been scanned, or the file has changed since it was.
+    The mtime half is what stops a manifest that legitimately declares nothing
+    — a local Terraform module holding a single variable — from being offered
+    up forever, while still catching one that was added or edited after the
+    last pass.
+
+    Both the capture hook and `blastradius index` ask this question, and they
+    have to answer it the same way: the hook flags what it flags at every Stop,
+    and the bootstrap spends a paid session on whatever it believes is unread.
+    """
+    root = Path(root)
+    scanned_at = None
+    if last_scanned:
+        try:
+            scanned_at = datetime.fromisoformat(last_scanned).timestamp()
+        except ValueError:
+            scanned_at = None
+
+    unread = []
+    for manifest in find_manifests(root):
+        relative = manifest.relative_to(root).as_posix()
+        if relative in known_paths:
+            continue
+        if exclude and exclude(relative):
+            continue
+        if scanned_at is not None:
+            try:
+                if manifest.stat().st_mtime <= scanned_at:
+                    continue    # looked at already, and unchanged since
+            except OSError:
+                pass
+        unread.append(relative)
+    return unread
