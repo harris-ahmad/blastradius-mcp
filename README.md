@@ -54,11 +54,33 @@ Everything is local: one SQLite file at `~/.blastradius/index.db`. No account, n
 
 `type` disambiguates names shared across ecosystems: `node` is both a Docker image and an npm package, and they are different rows.
 
+## Watching
+
+```bash
+blastradius check                  # one cycle now
+blastradius watch --interval-hours 6
+```
+
+New advisories land in the index, so the next time an agent opens a file
+referencing that artifact the inject hook surfaces them. Optionally, drop a
+webhook in `~/.blastradius/config.json`:
+
+```json
+{ "slack_webhook_url": "https://hooks.slack.com/...", "notify_min_severity": "high" }
+```
+
+Severity is computed from the CVSS v3.1 vector with the real formula, because
+OSV reports a vector far more often than a number. Only ecosystems OSV actually
+covers are monitored — GitHub Actions and npm. Docker images, Terraform modules
+and Helm charts are indexed but never reported as "no known CVEs", which would
+be a lie.
+
 ## Status
 
-Early. Working today: the index, the pinning classifier, both hooks, all three MCP tools, 49 tests.
+Early. Working today: the index, the pinning classifier, both hooks, all three
+MCP tools, the CVSS scorer, and the OSV monitor. **89 tests passing.**
 
-Next: the CVE daemon (OSV polling with local alerts), and packaging to the plugin marketplace.
+Next: plugin marketplace packaging, and extraction quality work.
 
 ## License
 
