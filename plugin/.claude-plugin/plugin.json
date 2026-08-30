@@ -3,8 +3,11 @@
   "version": "0.1.0",
   "description": "Cross-repo infrastructure memory. Warns you who else depends on an artifact before you change it.",
   "author": {
-    "name": "Harris Ahmad"
+    "name": "Harris Ahmad",
+    "url": "https://github.com/harris-ahmad"
   },
+  "homepage": "https://github.com/harris-ahmad/blastradius-mcp",
+  "repository": "https://github.com/harris-ahmad/blastradius-mcp",
   "license": "MIT",
   "keywords": [
     "claude-code",
@@ -15,8 +18,5 @@
     "github-actions",
     "supply-chain",
     "cve"
-  ],
-  "skills": [
-    "./skills/blast-radius"
   ]
 }

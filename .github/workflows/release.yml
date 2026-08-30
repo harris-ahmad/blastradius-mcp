@@ -1,0 +1,70 @@
+name: release
+
+# Publishing is deliberately manual: it fires on a version tag you push, not
+# on a merge. A PyPI version number can never be re-used, so the trigger is
+# the one irreversible step and belongs in your hands.
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Requires a PyPI trusted publisher for this repository and workflow
+# (pypi.org → your project → Publishing), plus a `pypi` environment on the
+# repo. No API token is stored anywhere.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build and verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install build twine
+
+      # The tag is the claim; this is the check. Publishing v0.2.0 from a tree
+      # that still says 0.1.0 produces a release nobody can explain later.
+      - name: the tag matches the packaged version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          packaged="$(python scripts/check-packaging.py --print-version)"
+          if [ "$tag" != "$packaged" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match packaged version $packaged"
+            exit 1
+          fi
+          echo "tag $GITHUB_REF_NAME matches version $packaged"
+
+      - run: python scripts/check-packaging.py
+
+      - run: python -m build
+
+      - run: twine check --strict dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write        # trusted publishing; no token to leak or rotate
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1

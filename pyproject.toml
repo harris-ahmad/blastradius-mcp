@@ -2,17 +2,46 @@
 name = "blastradius-mcp"
 version = "0.1.0"
 description = "Cross-repo infrastructure memory for coding agents"
+readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Harris Ahmad" }]
+keywords = [
+    "claude-code", "mcp", "dependencies", "terraform", "docker",
+    "github-actions", "helm", "npm", "supply-chain", "cve", "osv",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: System :: Systems Administration",
+    "Typing :: Typed",
+]
 dependencies = [
     "mcp>=1.2.0",
     "httpx>=0.27",
 ]
 
+[project.urls]
+Homepage = "https://github.com/harris-ahmad/blastradius-mcp"
+Repository = "https://github.com/harris-ahmad/blastradius-mcp"
+Issues = "https://github.com/harris-ahmad/blastradius-mcp/issues"
+
 [project.scripts]
 blastradius = "blastradius.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "build>=1.2", "twine>=5.1"]
 
 [build-system]
 requires = ["hatchling"]
@@ -20,6 +49,21 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/blastradius"]
+
+# The sdist is the package's own source of truth, so it carries what a
+# contributor needs to reproduce the numbers in the README — the fixture
+# corpus and its grader — but not the generated branding or the CI config,
+# which only matter in the repository.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/fixtures",
+    "/plugin",
+    "/README.md",
+    "/LICENSE",
+    "/pyproject.toml",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

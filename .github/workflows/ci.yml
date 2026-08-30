@@ -97,6 +97,47 @@ jobs:
       # run needs Claude, so it stays a local step.
       - run: python fixtures/check-corpus.py
 
+  package:
+    name: distributions build and install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Three files carry the version and nothing forces them to move
+      # together; the plugin and the package meet at one command name.
+      - run: python scripts/check-packaging.py
+
+      - run: pip install build twine
+
+      - run: python -m build
+
+      # twine check is what PyPI runs on upload. Failing here beats failing
+      # against a version number that can never be re-used.
+      - run: twine check --strict dist/*
+
+      # The wheel is what users actually get. Install it somewhere that has
+      # never seen the source tree and run the first two commands they will.
+      - name: the wheel works on its own
+        working-directory: ${{ runner.temp }}
+        env:
+          CLAUDE_CONFIG_DIR: ${{ runner.temp }}/claude-wheel
+          BLASTRADIUS_DB: ${{ runner.temp }}/wheel.db
+        run: |
+          python -m venv wheelenv
+          ./wheelenv/bin/pip install "$GITHUB_WORKSPACE"/dist/*.whl
+          mkdir -p "$CLAUDE_CONFIG_DIR"
+          ./wheelenv/bin/blastradius install
+          ./wheelenv/bin/blastradius doctor
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
   assets:
     name: assets match their generator
     runs-on: ubuntu-latest

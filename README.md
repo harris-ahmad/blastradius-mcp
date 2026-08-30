@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg">
-    <img src="assets/banner.svg" width="620"
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/harris-ahmad/blastradius-mcp/main/assets/banner-dark.svg">
+    <img src="https://raw.githubusercontent.com/harris-ahmad/blastradius-mcp/main/assets/banner.svg" width="620"
          alt="BlastRadius — cross-repo infrastructure memory for coding agents">
   </picture>
 </p>
@@ -93,13 +93,41 @@ no judgement required, so no session required either.
 ## Install
 
 ```bash
-git clone https://github.com/harris-ahmad/blastradius-mcp
-cd blastradius-mcp && pip install .
+pip install blastradius-mcp
 
 blastradius install    # wires hooks + MCP server into Claude Code
 blastradius link       # puts the CLI on PATH, no venv activation needed
 blastradius doctor     # verifies it — by running the hooks for real
 ```
+
+Or as a Claude Code plugin, which wires the hooks and MCP server for you:
+
+```
+/plugin marketplace add harris-ahmad/blastradius-mcp
+/plugin install blastradius@blastradius
+```
+
+The plugin still needs the package — it declares hooks and an MCP server that
+shell out to `blastradius`, so `pip install blastradius-mcp` comes first either
+way. What it saves you is `blastradius install` and keeping the wiring current.
+`claude plugin details blastradius@blastradius` puts its always-on cost at
+~126 tokens per session; the hooks themselves are harness-side and cost
+nothing until they fire.
+
+<details>
+<summary>From a clone</summary>
+
+```bash
+git clone https://github.com/harris-ahmad/blastradius-mcp
+cd blastradius-mcp && pip install .
+blastradius install && blastradius doctor
+```
+
+Prefer a plain install over `-e` unless you are working on the package itself:
+an editable install resolves imports through `src/` at runtime, and anything
+that disturbs that path produces `ModuleNotFoundError` while the console script
+sits there looking fine.
+</details>
 
 Everything is local: one SQLite file at `~/.blastradius/index.db`. No account, no
 server, no API key, nothing leaves your machine.
@@ -303,9 +331,12 @@ the grader cannot quietly start reporting a number nobody can check.
 ## Status
 
 Early, but complete across all four lanes and verified end to end on two
-machines. **303 tests**, run on Python 3.11–3.13 in CI.
+machines. **305 tests**, run on Python 3.11–3.13 in CI, which also builds the
+distributions and installs the wheel on a machine that has never seen the
+source.
 
-Next: plugin marketplace packaging, pnpm lockfiles.
+Next: pnpm lockfiles, and measuring what capture costs in context the way
+injection already is.
 
 Deliberately not built: a web viewer. The read-side UI is what made the original
 BlastRadius something you had to deploy, and a local tool that answers through
@@ -317,7 +348,15 @@ the agent does not need one.
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 python -m pytest -q      # `python -m` beats a global pytest shadowing the venv
+
+python scripts/check-packaging.py   # version agrees across all three manifests
+python fixtures/check-corpus.py     # generator and ground truth still match
+claude plugin validate .            # marketplace + plugin manifests
 ```
+
+Releases are cut by tag — `git tag v0.1.0 && git push origin v0.1.0` — which
+builds, checks the tag against the packaged version, and publishes to PyPI
+through a trusted publisher. There is no API token anywhere in the repo.
 
 Two things that bite, both now detected automatically:
 
