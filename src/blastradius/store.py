@@ -319,6 +319,17 @@ class Store:
             )
             return cur.rowcount > 0
 
+    def clear_alerts(self) -> int:
+        """Drop every recorded alert so they can be re-evaluated.
+
+        Needed whenever the applicability rules change: advisories already in
+        the table are skipped as 'seen', so a new filter never gets to judge
+        them. Clearing is cheaper than re-capturing the whole index.
+        """
+        with self._conn() as conn:
+            cur = conn.execute("DELETE FROM cve_alerts")
+            return int(cur.rowcount)
+
     def specs_for_artifact(self, artifact_id: int) -> list[str | None]:
         """Every distinct version spec pinned against one artifact."""
         with self._conn() as conn:

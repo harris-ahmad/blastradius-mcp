@@ -24,7 +24,11 @@ def main() -> None:
     sub.add_parser("doctor", help="Check the wiring and prove the hooks run.")
 
     sub.add_parser("stats", help="Show what is currently indexed.")
-    sub.add_parser("check", help="Run one CVE check against OSV now.")
+    check_cmd = sub.add_parser("check", help="Run one CVE check against OSV now.")
+    check_cmd.add_argument("--refresh", action="store_true",
+                           help="Clear recorded alerts and re-evaluate them. Use after "
+                                "the applicability rules change — already-seen advisories "
+                                "are otherwise skipped before the filter sees them.")
 
     consumers = sub.add_parser("consumers", help="Who uses an artifact, and where.")
     consumers.add_argument("identifier")
@@ -94,7 +98,7 @@ def main() -> None:
     elif args.command == "check":
         from .monitor import check, notify
         from .store import Store
-        alerts = check(Store(), verbose=True)
+        alerts = check(Store(), verbose=True, refresh=args.refresh)
         if alerts:
             notify(alerts)
         else:

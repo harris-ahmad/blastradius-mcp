@@ -37,6 +37,7 @@ def check(
     client: OsvClient | None = None,
     first_run_is_silent: bool = True,
     verbose: bool = False,
+    refresh: bool = False,
 ) -> list[dict]:
     """One monitoring cycle. Returns alerts that are new *and* worth reporting.
 
@@ -46,6 +47,11 @@ def check(
     def say(message: str) -> None:
         if verbose:
             print(message)
+
+    if refresh:
+        dropped = store.clear_alerts()
+        if verbose and dropped:
+            print(f"Cleared {dropped} recorded alert(s) for re-evaluation.\n")
 
     client = client or OsvClient()
     artifacts = store.monitorable_artifacts()

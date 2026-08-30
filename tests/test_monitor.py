@@ -242,3 +242,49 @@ class TestApplicabilityFiltering:
             "applies_to": ["^4.17.20", "4.17.20"],
         }])
         assert "affects: ^4.17.20, 4.17.20" in text
+
+
+class TestRefresh:
+    """Already-recorded advisories are skipped as 'seen', so a changed filter
+    never gets to judge them without an explicit re-evaluation."""
+
+    def test_clear_alerts_empties_the_table(self, store, client):
+        monitor.check(store, client, first_run_is_silent=False)
+        assert store.stats()["open_alerts"] > 0
+        assert store.clear_alerts() > 0
+        assert store.stats()["open_alerts"] == 0
+
+    def test_without_refresh_a_second_check_re_evaluates_nothing(self, store, client):
+        monitor.check(store, client, first_run_is_silent=False)
+        assert monitor.check(store, client, first_run_is_silent=False) == []
+
+    def test_refresh_re_evaluates_everything(self, store, client):
+        monitor.check(store, client, first_run_is_silent=False)
+        again = monitor.check(store, client, first_run_is_silent=False, refresh=True)
+        assert len(again) == 2
+
+    def test_refresh_applies_the_current_filter(self, tmp_path):
+        """An alert recorded before filtering existed should not survive a refresh
+        once the pinned version turns out to be fixed."""
+        store = Store(tmp_path / "r.db")
+        store.record("org/api", [Dependency("npm_package", "lodash", "4.17.21", "package.json", 1)])
+        artifact_id = store.monitorable_artifacts()[0]["id"]
+        # Recorded the old way: no applicability check at all.
+        store.add_alert(artifact_id, {"id": "GHSA-old", "severity": "high", "summary": "s"})
+        assert store.stats()["open_alerts"] == 1
+
+        fixed_in_that_version = {
+            "id": "GHSA-old", "summary": "s", "database_specific": {"severity": "HIGH"},
+            "affected": [{"ranges": [{"type": "SEMVER", "events": [
+                {"introduced": "0"}, {"fixed": "4.17.21"}]}]}],
+        }
+
+        def handler(request):
+            if request.url.path.endswith("/querybatch"):
+                return httpx.Response(200, json={"results": [{"vulns": [{"id": "GHSA-old"}]}]})
+            return httpx.Response(200, json=fixed_in_that_version)
+
+        monitor.check(store, OsvClient(base_url="https://osv.test/v1",
+                                       client=httpx.Client(transport=httpx.MockTransport(handler))),
+                      first_run_is_silent=False, refresh=True)
+        assert store.stats()["open_alerts"] == 0
