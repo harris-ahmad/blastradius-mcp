@@ -91,3 +91,10 @@ def test_monitorable_artifacts_are_only_osv_supported_types(store):
     ])
     types = {a["type"] for a in store.monitorable_artifacts()}
     assert types == {"npm_package", "github_action"}
+
+
+def test_all_dependencies_powers_the_repos_listing(store):
+    store.record("org/api", [dep("docker_image", "alpine", "3.19", "Dockerfile")])
+    store.record("org/web", [dep("npm_package", "react", "^18.2.0", "package.json")])
+    repos = {row["repository"] for row in store.all_dependencies()}
+    assert repos == {"org/api", "org/web"}
