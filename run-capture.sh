@@ -64,7 +64,41 @@ fi
 ALLOW="Read,Glob,Grep,mcp__blastradius__record_dependencies,mcp__blastradius__blast_radius,mcp__blastradius__hygiene"
 DENY="Write,Edit,NotebookEdit,Bash"
 
-START_REFS="$(blastradius stats | python3 -c 'import json,sys; print(json.load(sys.stdin)["references"])')"
+# The index count, or empty if the CLI is not working. Never a raw traceback.
+refs() {
+  blastradius stats 2>/dev/null \
+    | python3 -c 'import json,sys
+try:
+    print(json.load(sys.stdin)["references"])
+except Exception:
+    pass' 2>/dev/null
+}
+
+require_cli() {
+  if [ -z "$(refs)" ]; then
+    printf "\n%s✗%s %s is not working\n\n" "$R" "$X" "$(command -v blastradius)"
+    blastradius stats 2>&1 | sed 's/^/    /' | tail -4
+    cat <<EOF
+
+${B}The environment is broken, not the tool.${X} An editable install can lose its
+link to the package; a plain install cannot. You are testing, not developing
+the package, so use one:
+
+    pip install .          ${D}# not -e${X}
+
+Then re-point the hooks at it and continue:
+
+    blastradius install
+    blastradius doctor
+    ./run-capture.sh${WANTED:+$WANTED}
+
+EOF
+    exit 1
+  fi
+}
+
+require_cli
+START_REFS="$(refs)"
 
 for repo in $REPOS; do
   dir="$FIXTURES/$repo"
@@ -77,14 +111,19 @@ for repo in $REPOS; do
   printf "%s%s──  %s%s\n" "$B" "$G" "$repo" "$X"
   printf "%s    \"%s\"%s\n" "$D" "$prompt" "$X"
 
-  before="$(blastradius stats | python3 -c 'import json,sys; print(json.load(sys.stdin)["references"])')"
+  require_cli
+  before="$(refs)"
 
   if ( cd "$dir" && claude -p "$prompt" \
         --allowedTools "$ALLOW" \
         --disallowedTools "$DENY" \
         --permission-mode dontAsk \
         >/dev/null 2>"$dir/.br-session.log" ); then
-    after="$(blastradius stats | python3 -c 'import json,sys; print(json.load(sys.stdin)["references"])')"
+    after="$(refs)"
+    if [ -z "$after" ]; then
+      printf "    %s✗%s the CLI stopped working during this session\n" "$R" "$X"
+      require_cli
+    fi
     gained=$(( after - before ))
     if [ "$gained" -gt 0 ]; then
       printf "    %s✓%s recorded %s reference(s)\n\n" "$G" "$X" "$gained"
@@ -97,7 +136,7 @@ for repo in $REPOS; do
   fi
 done
 
-END_REFS="$(blastradius stats | python3 -c 'import json,sys; print(json.load(sys.stdin)["references"])')"
+END_REFS="$(refs)"
 printf "%s%s references recorded this run: %s%s\n\n" "$B" "$G" "$(( END_REFS - START_REFS ))" "$X"
 
 blastradius repos

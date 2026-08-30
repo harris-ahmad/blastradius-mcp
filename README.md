@@ -67,6 +67,13 @@ pip install -e ".[dev]"
 python -m pytest -q      # `python -m` beats a global pytest shadowing the venv
 ```
 
+**Testing rather than developing? Install it plainly, not editable.** An editable
+install puts only a `.pth` in site-packages and resolves imports through `src/`
+at runtime, so anything that disturbs that path produces
+`ModuleNotFoundError: No module named 'blastradius'` while the console script
+still sits there looking fine. A plain `pip install .` copies the package in and
+has nothing to dangle.
+
 `install` merges into `~/.claude/settings.json` rather than overwriting it —
 existing keys and other people's hooks are preserved, re-running never
 duplicates, and the previous file is backed up first. `blastradius uninstall`
