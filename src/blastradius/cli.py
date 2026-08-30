@@ -102,7 +102,8 @@ def main() -> None:
 
     elif args.command == "alerts":
         from .store import Store
-        rows = Store().list_alerts(severity=args.severity, identifier=args.artifact)
+        store = Store()
+        rows = store.list_alerts(severity=args.severity, identifier=args.artifact)
         if not rows:
             print("No open alerts.")
             return
@@ -126,6 +127,7 @@ def main() -> None:
                 entry["severity"] = row["severity"]
                 entry["summary"] = row["summary"]
 
+        consumer_cache: dict[tuple[str, str], list] = {}
         merged = sorted(grouped.values(),
                         key=lambda r: (order.get(r["severity"], 4), r["identifier"]))
         for row in merged:
@@ -133,8 +135,20 @@ def main() -> None:
             extra = f"  ({row['records']} advisory records)" if row["records"] > 1 else ""
             print(f"[{row['severity'].upper():8}] {row['identifier']:<22} {ident}{extra}")
             print(f"           {row['summary'][:88]}")
-            reaches = ", ".join(sorted(row["reaches"])) or "(recorded before filtering)"
-            print(f"           reaches: {reaches}")
+            reaches = sorted(row["reaches"])
+            # Which repositories are actually exposed. Without this the listing
+            # names a version spec and leaves you to go look up who pins it —
+            # in a cross-repo tool that is the wrong half of the answer.
+            key = (row["identifier"], row["type"])
+            if key not in consumer_cache:
+                consumer_cache[key] = store.consumers(row["identifier"], row["type"])
+            exposed = sorted({
+                c["repository"] for c in consumer_cache[key]
+                if not reaches or (c["version_spec"] or "(unpinned)") in reaches
+            })
+            print(f"           reaches: {', '.join(reaches) or '(recorded before filtering)'}")
+            if exposed:
+                print(f"           in:      {', '.join(exposed)}")
 
         counts: dict[str, int] = {}
         for row in merged:
