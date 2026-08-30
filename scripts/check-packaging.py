@@ -38,6 +38,55 @@ def pyproject_field(name: str) -> str | None:
     return match.group(1) if match else None
 
 
+VERSION_RE = re.compile(r"^\d+\.\d+\.\d+([-.a-zA-Z0-9]*)$")
+
+
+def set_version(version: str) -> int:
+    """Write one version into all three files that carry it.
+
+    Editing three files by hand is the kind of thing that gets half done, and
+    a half-done bump ships differently to each audience: pip users get the new
+    release while plugin users stay on the old one, because the marketplace
+    entry's version is what gates a plugin update.
+    """
+    if not VERSION_RE.match(version):
+        print(f"{version!r} is not a version like 1.2.3", file=sys.stderr)
+        return 1
+
+    marketplace = json.loads(MARKETPLACE.read_text())
+    entry = marketplace["plugins"][0]
+    plugin_manifest = (ROOT / entry["source"] / ".claude-plugin" / "plugin.json").resolve()
+    manifest = json.loads(plugin_manifest.read_text())
+
+    old = pyproject_field("version")
+    if old == version:
+        print(f"already at {version}")
+        return 0
+
+    # pyproject: the first version= under [project], not one in a dependency
+    # pin further down the file.
+    text = PYPROJECT.read_text()
+    head, sep, tail = text.partition("[project]")
+    tail, count = re.subn(r'^version\s*=\s*"[^"]+"', f'version = "{version}"',
+                          tail, count=1, flags=re.MULTILINE)
+    if not count:
+        print("could not find a version to replace in pyproject.toml", file=sys.stderr)
+        return 1
+    PYPROJECT.write_text(head + sep + tail)
+
+    # The JSON files are rewritten through json so a hand-edit elsewhere in
+    # them cannot be clobbered by a regex that matched the wrong line.
+    manifest["version"] = version
+    plugin_manifest.write_text(json.dumps(manifest, indent=2) + "\n")
+    entry["version"] = version
+    MARKETPLACE.write_text(json.dumps(marketplace, indent=2) + "\n")
+
+    print(f"{old} -> {version} in pyproject.toml, plugin.json, marketplace.json")
+    print(f"\nnext:  git commit -am 'Release {version}'"
+          f" && git tag v{version} && git push origin main v{version}")
+    return 0
+
+
 def check() -> list[str]:
     problems: list[str] = []
 
@@ -112,6 +161,16 @@ def check() -> list[str]:
 def main() -> int:
     # The release workflow compares the git tag against this. Parsing it out
     # of the success line would couple a release to prose.
+    if "--set-version" in sys.argv:
+        index = sys.argv.index("--set-version")
+        if index + 1 >= len(sys.argv):
+            print("--set-version needs a version, e.g. 0.2.0", file=sys.stderr)
+            return 1
+        if set_version(sys.argv[index + 1]):
+            return 1
+        # Writing all three is only half the promise; prove they agree.
+        return 0 if not check() else 1
+
     if "--print-version" in sys.argv:
         version = pyproject_field("version")
         if not version:
