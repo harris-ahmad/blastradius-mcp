@@ -150,3 +150,20 @@ class TestListAlerts:
         with store._conn() as conn:
             conn.execute("UPDATE cve_alerts SET acknowledged_at = 'now' WHERE osv_id = 'GHSA-1'")
         assert [r["identifier"] for r in store.list_alerts()] == ["vite"]
+
+
+class TestDuplicateAdvisoryRecords:
+    """OSV often carries several records for one CVE — an original plus a later
+    re-analysis — and they can disagree about whether a fix exists."""
+
+    def test_both_records_are_stored_separately(self, store):
+        store.record("org/api", [dep("npm_package", "lodash", "^4.17.20", "package.json")])
+        artifact_id = store.monitorable_artifacts()[0]["id"]
+        store.add_alert(artifact_id, {"id": "GHSA-a", "cve_id": "CVE-1",
+                                      "severity": "high", "summary": "original"}, ["^4.17.20"])
+        store.add_alert(artifact_id, {"id": "GHSA-b", "cve_id": "CVE-1",
+                                      "severity": "high", "summary": "re-analysis"}, ["4.17.21"])
+        rows = store.list_alerts()
+        assert len(rows) == 2
+        # The disagreement is the useful part and must survive storage.
+        assert {r["applies_to"] for r in rows} == {"^4.17.20", "4.17.21"}

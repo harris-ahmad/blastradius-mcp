@@ -107,17 +107,43 @@ def main() -> None:
             print("No open alerts.")
             return
         order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "unknown": 4}
-        rows.sort(key=lambda r: (order.get(r["severity"], 4), r["identifier"]))
+
+        # OSV often carries several advisory records for one CVE — a later
+        # re-analysis alongside the original. Collapse them, but keep the union
+        # of the pins they reach: the records can disagree about whether a fix
+        # exists, and that disagreement is the useful part.
+        grouped: dict[tuple[str, str], dict] = {}
         for row in rows:
+            key = (row["identifier"], row["cve_id"] or row["osv_id"])
+            entry = grouped.get(key)
+            if entry is None:
+                grouped[key] = {**row, "records": 1,
+                                "reaches": set((row["applies_to"] or "").split(", ")) - {""}}
+                continue
+            entry["records"] += 1
+            entry["reaches"] |= set((row["applies_to"] or "").split(", ")) - {""}
+            if order.get(row["severity"], 4) < order.get(entry["severity"], 4):
+                entry["severity"] = row["severity"]
+                entry["summary"] = row["summary"]
+
+        merged = sorted(grouped.values(),
+                        key=lambda r: (order.get(r["severity"], 4), r["identifier"]))
+        for row in merged:
             ident = row["cve_id"] or row["osv_id"]
-            print(f"[{row['severity'].upper():8}] {row['identifier']:<22} {ident}")
+            extra = f"  ({row['records']} advisory records)" if row["records"] > 1 else ""
+            print(f"[{row['severity'].upper():8}] {row['identifier']:<22} {ident}{extra}")
             print(f"           {row['summary'][:88]}")
-            print(f"           reaches: {row['applies_to'] or '(recorded before filtering)'}")
+            reaches = ", ".join(sorted(row["reaches"])) or "(recorded before filtering)"
+            print(f"           reaches: {reaches}")
+
         counts: dict[str, int] = {}
-        for row in rows:
+        for row in merged:
             counts[row["severity"]] = counts.get(row["severity"], 0) + 1
         print("\n" + "  ".join(f"{k}: {v}" for k, v in
                                 sorted(counts.items(), key=lambda kv: order.get(kv[0], 4))))
+        if len(rows) != len(merged):
+            print(f"{len(rows)} advisory record(s) covering {len(merged)} distinct "
+                  f"vulnerability(ies)")
 
     elif args.command == "check":
         from .monitor import check, notify
