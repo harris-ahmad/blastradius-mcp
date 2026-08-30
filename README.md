@@ -42,6 +42,14 @@ blastradius install      # wires the hooks + MCP server into Claude Code
 blastradius doctor       # verifies it, by running the hooks for real
 ```
 
+Working on it locally:
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+python -m pytest -q      # `python -m` beats a global pytest shadowing the venv
+```
+
 `install` merges into `~/.claude/settings.json` rather than overwriting it —
 existing keys and other people's hooks are preserved, re-running never
 duplicates, and the previous file is backed up first. `blastradius uninstall`
