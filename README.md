@@ -107,6 +107,7 @@ previous file is backed up first. `uninstall` reverses it cleanly.
 | `blastradius resolve <repos…>` | Read lockfiles, making vulnerability matching exact |
 | `blastradius watch` | Poll on an interval, in the foreground |
 | `blastradius service install` | Run the watcher in the background, across reboots |
+| `blastradius service stop` / `start` / `uninstall` | Pause it, resume it, remove it |
 | `blastradius repos` / `stats` / `doctor` | Index and wiring state |
 
 The MCP tools are `blast_radius`, `hygiene` and `record_dependencies`. `type`
@@ -236,7 +237,7 @@ regression test on extraction quality.
 ## Status
 
 Early, but complete across all four lanes and verified end to end on two
-machines. **250 tests.**
+machines. **255 tests.**
 
 Next: plugin marketplace packaging, pnpm lockfiles, workflow identifier
 canonicalisation.

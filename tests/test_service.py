@@ -121,3 +121,42 @@ class TestStatus:
                             lambda *a, **k: subprocess.CompletedProcess([], 3, "inactive", ""))
         assert service.status() == 1
         assert "not running" in capsys.readouterr().out
+
+
+class TestStopAndStart:
+    """`kill` does not work — both supervisors restart on failure — so pausing
+    has to be a first-class command."""
+
+    def _installed(self, monkeypatch):
+        monkeypatch.setattr(service, "_platform", lambda: "systemd")
+        monkeypatch.setattr(service.subprocess, "run", ran_ok)
+        monkeypatch.setattr("blastradius.install.verify_binary", lambda _: (True, ""))
+        service.install(6.0)
+
+    def test_stop_leaves_the_unit_in_place(self, home, monkeypatch, capsys):
+        self._installed(monkeypatch)
+        assert service.stop() == 0
+        assert service._systemd_path().exists()          # paused, not removed
+        assert "service start` resumes" in capsys.readouterr().out
+
+    def test_start_after_stop(self, home, monkeypatch, capsys):
+        self._installed(monkeypatch)
+        service.stop()
+        assert service.start() == 0
+        assert "started" in capsys.readouterr().out
+
+    def test_stop_is_safe_when_nothing_is_installed(self, home, monkeypatch, capsys):
+        monkeypatch.setattr(service, "_platform", lambda: "systemd")
+        assert service.stop() == 0
+        assert "no service installed" in capsys.readouterr().out
+
+    def test_start_refuses_when_nothing_is_installed(self, home, monkeypatch, capsys):
+        monkeypatch.setattr(service, "_platform", lambda: "systemd")
+        assert service.start() == 1
+        assert "not installed" in capsys.readouterr().out
+
+    def test_uninstall_removes_it_for_good(self, home, monkeypatch):
+        self._installed(monkeypatch)
+        assert service.uninstall() == 0
+        assert not service._systemd_path().exists()
+        assert service.status() == 1

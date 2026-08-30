@@ -163,6 +163,61 @@ def uninstall() -> int:
     return 0
 
 
+def stop() -> int:
+    """Halt the watcher without removing it.
+
+    Killing the process directly does not work — both supervisors are told to
+    restart it on failure, which is right for a watchdog and surprising if you
+    reach for `kill` first.
+    """
+    kind = _platform()
+    if kind == "launchd":
+        path = _launchd_path()
+        if not path.exists():
+            print(f"{DIM}no service installed{OFF}")
+            return 0
+        # Without -w this is a pause: the plist stays, `start` brings it back.
+        subprocess.run(["launchctl", "unload", str(path)], capture_output=True)
+    elif kind == "systemd":
+        if not _systemd_path().exists():
+            print(f"{DIM}no service installed{OFF}")
+            return 0
+        subprocess.run(["systemctl", "--user", "stop", "blastradius.service"],
+                       capture_output=True)
+    else:
+        print(f"{DIM}nothing to stop on this platform{OFF}")
+        return 0
+
+    print(f"{TICK} stopped — still installed, `service start` resumes it")
+    return 0
+
+
+def start() -> int:
+    kind = _platform()
+    if kind == "launchd":
+        path = _launchd_path()
+        if not path.exists():
+            print(f"{CROSS} not installed — run: blastradius service install")
+            return 1
+        result = subprocess.run(["launchctl", "load", "-w", str(path)],
+                                capture_output=True, text=True)
+    elif kind == "systemd":
+        if not _systemd_path().exists():
+            print(f"{CROSS} not installed — run: blastradius service install")
+            return 1
+        result = subprocess.run(["systemctl", "--user", "start", "blastradius.service"],
+                                capture_output=True, text=True)
+    else:
+        print(f"{DIM}nothing to start on this platform{OFF}")
+        return 1
+
+    if result.returncode != 0:
+        print(f"{CROSS} {(result.stderr or result.stdout).strip()}")
+        return 1
+    print(f"{TICK} started")
+    return 0
+
+
 def status() -> int:
     kind = _platform()
     if kind == "unsupported":
@@ -187,6 +242,9 @@ def status() -> int:
 
     print(f"{TICK if running else CROSS} {'running' if running else 'installed but not running'}")
     print(f"  {DIM}{path}{OFF}")
+    if running:
+        print(f"  {DIM}stop it with:  blastradius service stop"
+              f"   (remove entirely: service uninstall){OFF}")
     if LOG_PATH.exists():
         size = LOG_PATH.stat().st_size
         print(f"  {DIM}logs: {LOG_PATH} ({size} bytes){OFF}")

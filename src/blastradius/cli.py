@@ -24,7 +24,8 @@ def main() -> None:
 
     service_cmd = sub.add_parser("service",
                                  help="Run the watcher in the background, across reboots.")
-    service_cmd.add_argument("action", choices=["install", "uninstall", "status"])
+    service_cmd.add_argument(
+        "action", choices=["install", "start", "stop", "status", "uninstall"])
     service_cmd.add_argument("--interval-hours", type=float, default=6.0)
     sub.add_parser("doctor", help="Check the wiring and prove the hooks run.")
 
@@ -91,6 +92,10 @@ def main() -> None:
             sys.exit(service.install(args.interval_hours))
         if args.action == "uninstall":
             sys.exit(service.uninstall())
+        if args.action == "stop":
+            sys.exit(service.stop())
+        if args.action == "start":
+            sys.exit(service.start())
         sys.exit(service.status())
 
     elif args.command == "doctor":
