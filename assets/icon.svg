@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"
+     width="256" height="256" role="img" aria-label="BlastRadius">
+  <rect width="256" height="256" fill="#ffffff"/>
+  <circle cx="128.0" cy="128.0" r="46" fill="none" stroke="#0e7490" stroke-width="7" opacity="0.95"/>
+    <circle cx="128.0" cy="128.0" r="92" fill="none" stroke="#0e7490" stroke-width="7" opacity="0.6"/>
+    <circle cx="203.4" cy="75.2" r="19" fill="#ffffff"/>
+    <circle cx="203.4" cy="75.2" r="15" fill="#0e7490"/>
+    <circle cx="90.3" cy="101.6" r="19" fill="#ffffff"/>
+    <circle cx="90.3" cy="101.6" r="15" fill="#0e7490"/>
+    <circle cx="159.5" cy="214.5" r="21" fill="#ffffff"/>
+    <circle cx="159.5" cy="214.5" r="17" fill="#e08c1a"/>
+    <circle cx="128.0" cy="128.0" r="22" fill="#0e7490"/>
+</svg>

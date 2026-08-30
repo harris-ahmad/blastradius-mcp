@@ -1,6 +1,16 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg">
+    <img src="assets/banner.svg" width="620"
+         alt="BlastRadius — cross-repo infrastructure memory for coding agents">
+  </picture>
+</p>
+
 # BlastRadius
 
-**Cross-repo infrastructure memory for coding agents.** It remembers what every repository you open depends on, tells your agent who else is affected *before* it changes one, and watches those dependencies for vulnerabilities while nobody is asking.
+It remembers what every repository you open depends on, tells your agent who else
+is affected *before* it changes one, and watches those dependencies for
+vulnerabilities while nobody is asking.
 
 Not a code graph. Excellent tools already index functions, classes and imports. BlastRadius indexes the other half — Docker images, Terraform modules, GitHub Actions, Helm charts, npm packages — across repository boundaries, and answers the question a single session cannot: *if I bump this, who breaks?*
 

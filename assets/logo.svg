@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"
+     width="256" height="256" role="img" aria-label="BlastRadius">
+  <rect width="256" height="256" fill="#ffffff"/>
+  <line x1="128.0" y1="128.0" x2="224.1" y2="83.2" stroke="#5c7885" stroke-width="2.5" opacity="0.5"/>
+    <line x1="128.0" y1="128.0" x2="121.7" y2="56.3" stroke="#5c7885" stroke-width="2.5" opacity="0.5"/>
+    <line x1="128.0" y1="128.0" x2="36.2" y2="75.0" stroke="#5c7885" stroke-width="2.5" opacity="0.5"/>
+    <line x1="128.0" y1="128.0" x2="69.0" y2="169.3" stroke="#5c7885" stroke-width="2.5" opacity="0.5"/>
+    <line x1="128.0" y1="128.0" x2="209.2" y2="196.1" stroke="#5c7885" stroke-width="2.5" opacity="0.5"/>
+    <circle cx="128.0" cy="128.0" r="38" fill="none" stroke="#0e7490" stroke-width="4.5" opacity="0.9"/>
+    <circle cx="128.0" cy="128.0" r="72" fill="none" stroke="#0e7490" stroke-width="4.5" opacity="0.62"/>
+    <circle cx="128.0" cy="128.0" r="106" fill="none" stroke="#0e7490" stroke-width="4.5" opacity="0.36"/>
+    <circle cx="224.1" cy="83.2" r="14" fill="#ffffff"/>
+    <circle cx="224.1" cy="83.2" r="10" fill="#0e7490"/>
+    <circle cx="121.7" cy="56.3" r="14" fill="#ffffff"/>
+    <circle cx="121.7" cy="56.3" r="10" fill="#0e7490"/>
+    <circle cx="36.2" cy="75.0" r="14" fill="#ffffff"/>
+    <circle cx="36.2" cy="75.0" r="10" fill="#0e7490"/>
+    <circle cx="69.0" cy="169.3" r="14" fill="#ffffff"/>
+    <circle cx="69.0" cy="169.3" r="10" fill="#0e7490"/>
+    <circle cx="209.2" cy="196.1" r="16.5" fill="#ffffff"/>
+    <circle cx="209.2" cy="196.1" r="12.5" fill="#e08c1a"/>
+    <circle cx="128.0" cy="128.0" r="17" fill="#0e7490"/>
+</svg>

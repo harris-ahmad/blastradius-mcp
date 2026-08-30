@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 236"
+     width="760" height="236" role="img"
+     aria-label="BlastRadius — cross-repo infrastructure memory for coding agents">
+  <rect width="760" height="236" fill="#ffffff"/>
+  <g transform="translate(34 33.5) scale(0.66)">
+    <line x1="128.0" y1="128.0" x2="224.1" y2="83.2" stroke="#5c7885" stroke-width="2.5" opacity="0.5"/>
+    <line x1="128.0" y1="128.0" x2="121.7" y2="56.3" stroke="#5c7885" stroke-width="2.5" opacity="0.5"/>
+    <line x1="128.0" y1="128.0" x2="36.2" y2="75.0" stroke="#5c7885" stroke-width="2.5" opacity="0.5"/>
+    <line x1="128.0" y1="128.0" x2="69.0" y2="169.3" stroke="#5c7885" stroke-width="2.5" opacity="0.5"/>
+    <line x1="128.0" y1="128.0" x2="209.2" y2="196.1" stroke="#5c7885" stroke-width="2.5" opacity="0.5"/>
+    <circle cx="128.0" cy="128.0" r="38" fill="none" stroke="#0e7490" stroke-width="4.5" opacity="0.9"/>
+    <circle cx="128.0" cy="128.0" r="72" fill="none" stroke="#0e7490" stroke-width="4.5" opacity="0.62"/>
+    <circle cx="128.0" cy="128.0" r="106" fill="none" stroke="#0e7490" stroke-width="4.5" opacity="0.36"/>
+    <circle cx="224.1" cy="83.2" r="14" fill="#ffffff"/>
+    <circle cx="224.1" cy="83.2" r="10" fill="#0e7490"/>
+    <circle cx="121.7" cy="56.3" r="14" fill="#ffffff"/>
+    <circle cx="121.7" cy="56.3" r="10" fill="#0e7490"/>
+    <circle cx="36.2" cy="75.0" r="14" fill="#ffffff"/>
+    <circle cx="36.2" cy="75.0" r="10" fill="#0e7490"/>
+    <circle cx="69.0" cy="169.3" r="14" fill="#ffffff"/>
+    <circle cx="69.0" cy="169.3" r="10" fill="#0e7490"/>
+    <circle cx="209.2" cy="196.1" r="16.5" fill="#ffffff"/>
+    <circle cx="209.2" cy="196.1" r="12.5" fill="#e08c1a"/>
+    <circle cx="128.0" cy="128.0" r="17" fill="#0e7490"/>
+  </g>
+  <text x="240.96" y="112" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="54"
+        font-weight="700" letter-spacing="-1.6" fill="#0f2830">Blast<tspan
+        fill="#0e7490">Radius</tspan></text>
+  <text x="240.96" y="150" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="19"
+        fill="#5c7885">Cross-repo infrastructure memory for coding agents</text>
+  <text x="242.96" y="186" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="15"
+        fill="#5c7885" opacity="0.85">if I bump this, who breaks?</text>
+</svg>
