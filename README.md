@@ -67,6 +67,11 @@ pip install -e ".[dev]"
 python -m pytest -q      # `python -m` beats a global pytest shadowing the venv
 ```
 
+**After every `git pull`, run `pip install .` again.** A plain install copies the
+package, so pulling updates the source and leaves the running code untouched —
+silently. `blastradius doctor` detects this and `run-capture.sh` refuses to run
+against a stale build.
+
 **Testing rather than developing? Install it plainly, not editable.** An editable
 install puts only a `.pth` in site-packages and resolves imports through `src/`
 at runtime, so anything that disturbs that path produces

@@ -98,6 +98,16 @@ EOF
 }
 
 require_cli
+
+# A non-editable install does not follow `git pull`. Catch it before six
+# sessions run against yesterday's code.
+if blastradius doctor 2>/dev/null | grep -q "OLDER than the source"; then
+  printf "\n%s✗%s the installed package is older than this checkout\n" "$R" "$X"
+  printf "    %sa plain install does not follow git pull%s\n\n" "$D" "$X"
+  printf "    run: pip install .\n\n"
+  exit 1
+fi
+
 START_REFS="$(refs)"
 
 for repo in $REPOS; do

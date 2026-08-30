@@ -1,5 +1,7 @@
 """The installer edits a file the user owns. It must never clobber it."""
 import json
+import os
+from pathlib import Path
 
 import pytest
 
@@ -231,3 +233,51 @@ class TestBinaryVerification:
         works, detail = inst.verify_binary(str(good))
         assert works is True
         assert detail == ""
+
+
+class TestStalenessDetection:
+    """A non-editable install does not follow `git pull`, and the symptom is a
+    fix that works in the repo and does nothing when you run the command."""
+
+    def test_flags_source_newer_than_installed(self, tmp_path, monkeypatch):
+        import blastradius
+        source = tmp_path / "src" / "blastradius"
+        source.mkdir(parents=True)
+        (source / "__init__.py").write_text("")
+        (source / "store.py").write_text("# newer")
+        installed = Path(blastradius.__file__).parent
+        newest_installed = max(f.stat().st_mtime for f in installed.glob("*.py"))
+        os.utime(source / "store.py", (newest_installed + 500, newest_installed + 500))
+
+        monkeypatch.chdir(tmp_path)
+        stale, detail = inst.stale_against_source()
+        assert stale is True
+        assert str(tmp_path) in detail
+
+    def test_quiet_when_installed_is_current(self, tmp_path, monkeypatch):
+        import blastradius
+        source = tmp_path / "src" / "blastradius"
+        source.mkdir(parents=True)
+        (source / "__init__.py").write_text("")
+        installed = Path(blastradius.__file__).parent
+        oldest = min(f.stat().st_mtime for f in installed.glob("*.py"))
+        os.utime(source / "__init__.py", (oldest - 500, oldest - 500))
+
+        monkeypatch.chdir(tmp_path)
+        stale, _ = inst.stale_against_source()
+        assert stale is False
+
+    def test_recognises_an_editable_install(self, monkeypatch):
+        import blastradius
+        repo_root = Path(blastradius.__file__).parent.parent.parent
+        if not (repo_root / "src" / "blastradius" / "__init__.py").exists():
+            pytest.skip("not running from an editable checkout")
+        monkeypatch.chdir(repo_root)
+        stale, detail = inst.stale_against_source()
+        assert stale is False
+        assert "editable" in detail
+
+    def test_no_checkout_nearby_is_not_an_error(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        stale, detail = inst.stale_against_source()
+        assert stale is False

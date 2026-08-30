@@ -283,6 +283,34 @@ def uninstall() -> int:
     return 0
 
 
+def stale_against_source() -> tuple[bool, str]:
+    """Is the installed package older than a checkout sitting next to us?
+
+    A non-editable install copies the package, so `git pull` updates the source
+    and leaves the running code untouched — silently. The symptom is a fix that
+    demonstrably works in the repo and does nothing when you run the command.
+    """
+    import blastradius
+
+    installed_dir = Path(blastradius.__file__).parent
+    for base in (Path.cwd(), *Path.cwd().parents):
+        source_dir = base / "src" / "blastradius"
+        if not (source_dir / "__init__.py").exists():
+            continue
+        if source_dir.resolve() == installed_dir.resolve():
+            return False, "editable install — source is the installed code"
+        newest_source = max(
+            (f.stat().st_mtime for f in source_dir.glob("*.py")), default=0.0
+        )
+        newest_installed = max(
+            (f.stat().st_mtime for f in installed_dir.glob("*.py")), default=0.0
+        )
+        if newest_source > newest_installed + 1:
+            return True, str(source_dir.parent.parent)
+        return False, "up to date with the checkout"
+    return False, "no checkout found nearby"
+
+
 def doctor() -> int:
     """Check the wiring, and prove it by running the hooks for real."""
     from .store import Store
@@ -295,6 +323,15 @@ def doctor() -> int:
     else:
         print(f"  {CROSS} not found: {binary}")
         problems += 1
+
+    stale, detail = stale_against_source()
+    if stale:
+        print(f"  {CROSS} installed package is OLDER than the source in {detail}")
+        print(f"    {DIM}a non-editable install does not follow `git pull`{OFF}")
+        print(f"    run: pip install .")
+        problems += 1
+    else:
+        print(f"  {DIM}{detail}{OFF}")
 
     print(f"\n{BOLD}settings{OFF}")
     path = settings_path()
