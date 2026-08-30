@@ -25,6 +25,26 @@ from .store import Store
 
 _PASS = {"continue": True, "suppressOutput": True}
 
+# Injected context is capped, so what gets cut matters. Ranking by these beats
+# file order, which surfaced whatever happened to appear near the top.
+_SEVERITY_SCORE = {"critical": 100, "high": 60, "medium": 25, "low": 8, "unknown": 4}
+_CONSUMER_WEIGHT = 10      # each other repository that shares the artifact
+_DRIFT_WEIGHT = 15         # repositories disagreeing about the version
+
+
+def _relevance(summary: dict) -> int:
+    """How much an artifact deserves the reader's attention.
+
+    An open advisory dominates; after that, breadth of use and version drift.
+    An artifact nobody else uses and nothing is wrong with scores zero and is
+    the first thing dropped.
+    """
+    score = _SEVERITY_SCORE.get(summary.get("worst_severity") or "", 0)
+    score += summary.get("other_consumers", 0) * _CONSUMER_WEIGHT
+    if summary.get("version_spread", 0) > 1:
+        score += _DRIFT_WEIGHT
+    return score
+
 DEBUG = bool(os.environ.get("BLASTRADIUS_DEBUG"))
 
 
@@ -121,6 +141,19 @@ def inject(payload: dict[str, Any]) -> dict[str, Any]:
     if not artifacts:
         _debug("every artifact in this file is filtered out by config")
         return _PASS
+
+    # Rank before truncating, in one batched pair of queries — a package.json
+    # can hold fifty dependencies and this runs on every manifest read.
+    summaries = store.impact_summary(
+        [(a["type"], a["identifier"]) for a in artifacts], exclude_repository=repository
+    )
+    artifacts.sort(
+        key=lambda a: (-_relevance(summaries.get((a["type"], a["identifier"]), {})),
+                       a["line_number"])
+    )
+    if len(artifacts) > config.inject.max_artifacts:
+        _debug(f"ranking {len(artifacts)} artifact(s) down to "
+               f"{config.inject.max_artifacts}")
 
     lines: list[str] = []
     for artifact in artifacts[:config.inject.max_artifacts]:

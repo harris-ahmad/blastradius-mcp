@@ -21,6 +21,11 @@ def main() -> None:
     link_cmd = sub.add_parser("link", help="Put the CLI on PATH so it works without the venv.")
     link_cmd.add_argument("--to", default=None, help="Directory to link into.")
     sub.add_parser("uninstall", help="Remove the hooks and MCP server registration.")
+
+    service_cmd = sub.add_parser("service",
+                                 help="Run the watcher in the background, across reboots.")
+    service_cmd.add_argument("action", choices=["install", "uninstall", "status"])
+    service_cmd.add_argument("--interval-hours", type=float, default=6.0)
     sub.add_parser("doctor", help="Check the wiring and prove the hooks run.")
 
     sub.add_parser("stats", help="Show what is currently indexed.")
@@ -79,6 +84,14 @@ def main() -> None:
     elif args.command == "uninstall":
         from .install import uninstall
         sys.exit(uninstall())
+
+    elif args.command == "service":
+        from . import service
+        if args.action == "install":
+            sys.exit(service.install(args.interval_hours))
+        if args.action == "uninstall":
+            sys.exit(service.uninstall())
+        sys.exit(service.status())
 
     elif args.command == "doctor":
         from .install import doctor

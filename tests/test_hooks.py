@@ -214,3 +214,58 @@ class TestConfigGovernsInjection:
         root, _ = repo
         self._with_config(monkeypatch, exclude=ExcludeConfig(repositories=("org/api",)))
         assert "hookSpecificOutput" not in hooks.capture({"cwd": str(root)})
+
+
+class TestRelevanceRanking:
+    """Injected context is capped, so what gets cut matters more than what fits."""
+
+    def test_an_advisory_outranks_breadth_of_use(self):
+        cve_only = {"worst_severity": "critical", "other_consumers": 0, "version_spread": 1}
+        popular = {"worst_severity": None, "other_consumers": 5, "version_spread": 2}
+        assert hooks._relevance(cve_only) > hooks._relevance(popular)
+
+    def test_more_consumers_outranks_fewer(self):
+        assert hooks._relevance({"other_consumers": 5}) > hooks._relevance({"other_consumers": 1})
+
+    def test_drift_counts_against_an_artifact(self):
+        drifting = {"other_consumers": 2, "version_spread": 3}
+        aligned = {"other_consumers": 2, "version_spread": 1}
+        assert hooks._relevance(drifting) > hooks._relevance(aligned)
+
+    def test_severity_ordering(self):
+        scores = [hooks._relevance({"worst_severity": s})
+                  for s in ("critical", "high", "medium", "low")]
+        assert scores == sorted(scores, reverse=True)
+
+    def test_an_unremarkable_artifact_scores_zero(self):
+        assert hooks._relevance({"other_consumers": 0, "version_spread": 1}) == 0
+
+    def test_the_important_ones_survive_the_cap(self, repo, monkeypatch):
+        """Ten dependencies, room for two: the CVE and the drifting one."""
+        from blastradius.config import Config, InjectConfig
+        root, db = repo
+        store = Store(db)
+        boring = [dep("npm_package", n, "1.0.0", "package.json", i + 1)
+                  for i, n in enumerate("abcdefgh")]
+        store.record("org/api", [
+            *boring,
+            dep("npm_package", "lodash", "^4.17.20", "package.json", 9),
+            dep("npm_package", "vite", "^5.2.0", "package.json", 10),
+        ])
+        store.record("org/web", [dep("npm_package", "lodash", "latest", "package.json", 1)])
+        store.record("org/ops", [dep("npm_package", "vite", "^5.0.0", "package.json", 1)])
+        vite_id = next(a["id"] for a in store.monitorable_artifacts()
+                       if a["identifier"] == "vite")
+        store.add_alert(vite_id, {"id": "X", "severity": "critical", "summary": "RCE"}, ["^5.2.0"])
+
+        monkeypatch.setattr(hooks, "load_config",
+                            lambda: Config(inject=InjectConfig(max_artifacts=2)))
+        (root / "package.json").write_text("{}")
+        out = hooks.inject({"cwd": str(root),
+                            "tool_input": {"file_path": str(root / "package.json")}})
+
+        context = out["hookSpecificOutput"]["additionalContext"]
+        assert "vite" in context and "lodash" in context
+        assert context.index("vite") < context.index("lodash")   # CVE ranks first
+        for name in "abcdefgh":
+            assert f"`{name}`" not in context

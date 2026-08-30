@@ -105,7 +105,8 @@ previous file is backed up first. `uninstall` reverses it cleanly.
 | `blastradius alerts` | Open advisories, which pins they reach, which repos carry them |
 | `blastradius check [--refresh]` | Query OSV now; `--refresh` re-evaluates recorded alerts |
 | `blastradius resolve <repos…>` | Read lockfiles, making vulnerability matching exact |
-| `blastradius watch` | Poll on an interval |
+| `blastradius watch` | Poll on an interval, in the foreground |
+| `blastradius service install` | Run the watcher in the background, across reboots |
 | `blastradius repos` / `stats` / `doctor` | Index and wiring state |
 
 The MCP tools are `blast_radius`, `hygiene` and `record_dependencies`. `type`
@@ -139,6 +140,12 @@ blastradius config --init   # write an example to ~/.blastradius/config.json
 
 Injection spends context on every matching read, so it is tunable: narrow it to
 the artifact types you care about, raise the severity floor, or turn it off.
+
+Because it is capped, **what gets cut matters more than what fits**. Artifacts
+are ranked before truncation — an open advisory dominates, then breadth of use,
+then version drift — so a `package.json` with fifty dependencies surfaces the
+two that matter rather than the first eight alphabetically. Ranking costs two
+batched queries, because this runs inside a five-second hook timeout.
 
 Exclusions govern capture as well as injection. Dependency names are usually
 dull, but a private repository name or an internal registry hostname is not, so
@@ -229,10 +236,14 @@ regression test on extraction quality.
 ## Status
 
 Early, but complete across all four lanes and verified end to end on two
-machines. **231 tests.**
+machines. **250 tests.**
 
 Next: plugin marketplace packaging, pnpm lockfiles, workflow identifier
 canonicalisation.
+
+Deliberately not built: a web viewer. The read-side UI is what made the original
+BlastRadius something you had to deploy, and a local tool that answers through
+the agent does not need one.
 
 ## Development
 

@@ -248,6 +248,64 @@ class Store:
                 )
             ]
 
+    def impact_summary(self, keys: list[tuple[str, str]],
+                       exclude_repository: str | None = None) -> dict[tuple[str, str], dict]:
+        """Cross-repo impact for a batch of artifacts, in two queries.
+
+        The injection hook runs inside a 5-second timeout on every manifest
+        read, and a package.json can carry fifty dependencies. Ranking them
+        one query at a time would be the slowest thing in the hot path.
+        """
+        if not keys:
+            return {}
+
+        clause = " OR ".join(["(a.type = ? AND a.identifier = ?)"] * len(keys))
+        flat: list[object] = [part for key in keys for part in key]
+
+        summary: dict[tuple[str, str], dict] = {
+            key: {"other_consumers": 0, "version_spread": 0, "worst_severity": None}
+            for key in keys
+        }
+
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT a.type, a.identifier,
+                       COUNT(DISTINCT CASE WHEN r.name != ? THEN r.name END) AS other_consumers,
+                       COUNT(DISTINCT COALESCE(d.resolved_version, d.version_spec, '')) AS spread
+                FROM artifacts a
+                JOIN dependencies d ON d.artifact_id = a.id
+                JOIN repositories r ON r.id = d.repository_id
+                WHERE {clause}
+                GROUP BY a.type, a.identifier
+                """,
+                [exclude_repository or "", *flat],
+            ).fetchall()
+            for row in rows:
+                summary[(row["type"], row["identifier"])].update(
+                    other_consumers=int(row["other_consumers"]),
+                    version_spread=int(row["spread"]),
+                )
+
+            alert_rows = conn.execute(
+                f"""
+                SELECT a.type, a.identifier, c.severity
+                FROM cve_alerts c
+                JOIN artifacts a ON a.id = c.artifact_id
+                WHERE c.acknowledged_at IS NULL AND ({clause})
+                """,
+                flat,
+            ).fetchall()
+
+        rank = {"critical": 4, "high": 3, "medium": 2, "low": 1, "unknown": 0}
+        for row in alert_rows:
+            key = (row["type"], row["identifier"])
+            current = summary[key]["worst_severity"]
+            if current is None or rank.get(row["severity"], 0) > rank.get(current, 0):
+                summary[key]["worst_severity"] = row["severity"]
+
+        return summary
+
     def all_dependencies(self) -> list[dict]:
         with self._conn() as conn:
             return [
