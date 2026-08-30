@@ -50,6 +50,26 @@ def binary_path() -> str:
     return f"{sys.executable} -m blastradius.cli"
 
 
+def verify_binary(binary: str) -> tuple[bool, str]:
+    """Confirm the command actually runs before we write it into settings.
+
+    A console script whose package cannot be imported still exists on disk and
+    still looks like a valid path. Writing it produces hooks that crash on every
+    invocation — so check by running it, not by checking the file exists.
+    """
+    try:
+        result = subprocess.run(
+            [*binary.split(), "stats"],
+            capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"{type(exc).__name__}: {exc}"
+    if result.returncode != 0:
+        tail = (result.stderr or result.stdout).strip().splitlines()
+        return False, tail[-1] if tail else f"exit code {result.returncode}"
+    return True, ""
+
+
 def hook_entries(binary: str) -> dict[str, list[dict]]:
     return {
         "PreToolUse": [{
@@ -121,6 +141,20 @@ def _backup(path: Path) -> Path | None:
 def install(dry_run: bool = False) -> int:
     path = settings_path()
     binary = binary_path()
+
+    works, detail = verify_binary(binary)
+    if not works:
+        print(f"{CROSS} {binary}")
+        print(f"  {DIM}{detail}{OFF}")
+        print(f"\n{BOLD}Refusing to write a command that does not run.{OFF}")
+        print("Hooks would crash on every invocation. Rebuild the environment:\n")
+        print("    deactivate; rm -rf .venv")
+        print("    python3 -m venv .venv && source .venv/bin/activate")
+        print('    pip install -e ".[dev]"')
+        print("\nthen run `blastradius install` again.")
+        return 1
+    print(f"{TICK} {binary} runs")
+
     settings = _load(path)
 
     replaced = _strip_ours(settings)

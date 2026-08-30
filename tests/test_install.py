@@ -185,3 +185,41 @@ class TestLink:
         monkeypatch.setattr(inst, "binary_path", lambda: "/usr/bin/python -m blastradius.cli")
         assert inst.link(str(tmp_path / "bin")) == 1
         assert "no console script" in capsys.readouterr().out
+
+
+class TestBinaryVerification:
+    """A broken console script still exists on disk and still looks like a valid
+    path. Writing it produces hooks that crash on every invocation."""
+
+    def test_refuses_a_binary_that_does_not_run(self, claude_dir, tmp_path, monkeypatch, capsys):
+        broken = tmp_path / "broken"
+        broken.write_text("#!/usr/bin/env python3\nimport nonexistent_module_xyz\n")
+        broken.chmod(0o755)
+        monkeypatch.setattr(inst, "binary_path", lambda: str(broken))
+
+        assert inst.install() == 1
+        assert not (claude_dir / "settings.json").exists()
+        assert "Refusing to write a command that does not run" in capsys.readouterr().out
+
+    def test_leaves_existing_settings_untouched_when_refusing(self, claude_dir, tmp_path, monkeypatch):
+        write(claude_dir, {"theme": "dark"})
+        broken = tmp_path / "broken"
+        broken.write_text("#!/usr/bin/env python3\nraise SystemExit(3)\n")
+        broken.chmod(0o755)
+        monkeypatch.setattr(inst, "binary_path", lambda: str(broken))
+
+        assert inst.install() == 1
+        assert read(claude_dir) == {"theme": "dark"}
+
+    def test_reports_a_missing_binary(self, tmp_path):
+        works, detail = inst.verify_binary(str(tmp_path / "nope"))
+        assert works is False
+        assert detail
+
+    def test_accepts_a_working_binary(self, tmp_path):
+        good = tmp_path / "good"
+        good.write_text("#!/usr/bin/env python3\nprint('{}')\n")
+        good.chmod(0o755)
+        works, detail = inst.verify_binary(str(good))
+        assert works is True
+        assert detail == ""
