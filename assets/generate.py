@@ -131,6 +131,39 @@ def banner(ink: str, muted: str, accent: str, background: str) -> str:
 """
 
 
+def social(ink: str, muted: str, accent: str, background: str) -> str:
+    """GitHub social preview: 1280x640, the 2:1 ratio the crop expects.
+
+    Seen at roughly 500px wide in a feed, so the type is far larger than a
+    banner needs and there is a generous margin — some surfaces trim the edges.
+    """
+    width, height = 1280, 640
+    scale = 1.24
+    mark_x, mark_y = 104, (height - SIZE * scale) / 2
+    text_x = mark_x + SIZE * scale + 74
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}"
+     width="{width}" height="{height}" role="img"
+     aria-label="BlastRadius — cross-repo infrastructure memory for coding agents">
+  <rect width="{width}" height="{height}" fill="{background}"/>
+  <g transform="translate({mark_x} {mark_y:.1f}) scale({scale})">
+    {mark(accent, muted, background)}
+  </g>
+  <text x="{text_x}" y="288" font-family="{FONT}" font-size="88"
+        font-weight="700" letter-spacing="-2.6" fill="{ink}">Blast<tspan
+        fill="{accent}">Radius</tspan></text>
+  <text x="{text_x}" y="342" font-family="{FONT}" font-size="30"
+        fill="{muted}">Cross-repo infrastructure memory</text>
+  <text x="{text_x}" y="384" font-family="{FONT}" font-size="30"
+        fill="{muted}">for coding agents</text>
+  <rect x="{text_x}" y="424" width="62" height="3" fill="{accent}" opacity="0.6"/>
+  <text x="{text_x}" y="474" font-family="{MONO}" font-size="24"
+        fill="{ink}" opacity="0.92">43 advisories from OSV.</text>
+  <text x="{text_x}" y="508" font-family="{MONO}" font-size="24"
+        fill="{accent}">9 that reach your pins.</text>
+</svg>
+"""
+
+
 def main() -> None:
     files = {
         "logo.svg":        logo(ACCENT_LIGHT, MUTED_LIGHT, "#ffffff"),
@@ -139,6 +172,7 @@ def main() -> None:
         "icon-dark.svg":   logo(ACCENT_DARK, MUTED_DARK, "#0d1519", small=True),
         "banner.svg":      banner(INK_LIGHT, MUTED_LIGHT, ACCENT_LIGHT, "#ffffff"),
         "banner-dark.svg": banner(INK_DARK, MUTED_DARK, ACCENT_DARK, "#0d1519"),
+        "social.svg":      social(INK_DARK, MUTED_DARK, ACCENT_DARK, "#0d1519"),
     }
     for name, content in files.items():
         (HERE / name).write_text(content)

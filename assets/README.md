@@ -11,6 +11,20 @@ python3 assets/generate.py
 | `banner.svg` / `banner-dark.svg` | README header, social preview |
 | `logo.svg` / `logo-dark.svg` | Full mark, 48px and above |
 | `icon.svg` / `icon-dark.svg` | Favicon and avatar, below 48px |
+| `social.png` | GitHub social preview — 1280x640, uploaded by hand |
+
+## Social preview
+
+`social.png` is 1280x640 (the 2:1 ratio GitHub's crop expects) and is the one
+asset that must be raster — GitHub rejects SVG there. It is generated from
+`social.svg` by rasterising at exactly 1280x640.
+
+It cannot be set from the API: GitHub exposes the social preview only through
+**Settings → General → Social preview → Upload an image**. Re-upload it by hand
+after regenerating.
+
+Type is sized for a feed, not a screen. These cards are seen around 440-600px
+wide, so the wordmark carries and everything else is secondary.
 
 ## The mark
 

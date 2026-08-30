@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640"
+     width="1280" height="640" role="img"
+     aria-label="BlastRadius — cross-repo infrastructure memory for coding agents">
+  <rect width="1280" height="640" fill="#0d1519"/>
+  <g transform="translate(104 161.3) scale(1.24)">
+    <line x1="128.0" y1="128.0" x2="224.1" y2="83.2" stroke="#8fadb9" stroke-width="2.5" opacity="0.5"/>
+    <line x1="128.0" y1="128.0" x2="121.7" y2="56.3" stroke="#8fadb9" stroke-width="2.5" opacity="0.5"/>
+    <line x1="128.0" y1="128.0" x2="36.2" y2="75.0" stroke="#8fadb9" stroke-width="2.5" opacity="0.5"/>
+    <line x1="128.0" y1="128.0" x2="69.0" y2="169.3" stroke="#8fadb9" stroke-width="2.5" opacity="0.5"/>
+    <line x1="128.0" y1="128.0" x2="209.2" y2="196.1" stroke="#8fadb9" stroke-width="2.5" opacity="0.5"/>
+    <circle cx="128.0" cy="128.0" r="38" fill="none" stroke="#3bb3cc" stroke-width="4.5" opacity="0.9"/>
+    <circle cx="128.0" cy="128.0" r="72" fill="none" stroke="#3bb3cc" stroke-width="4.5" opacity="0.62"/>
+    <circle cx="128.0" cy="128.0" r="106" fill="none" stroke="#3bb3cc" stroke-width="4.5" opacity="0.36"/>
+    <circle cx="224.1" cy="83.2" r="14" fill="#0d1519"/>
+    <circle cx="224.1" cy="83.2" r="10" fill="#3bb3cc"/>
+    <circle cx="121.7" cy="56.3" r="14" fill="#0d1519"/>
+    <circle cx="121.7" cy="56.3" r="10" fill="#3bb3cc"/>
+    <circle cx="36.2" cy="75.0" r="14" fill="#0d1519"/>
+    <circle cx="36.2" cy="75.0" r="10" fill="#3bb3cc"/>
+    <circle cx="69.0" cy="169.3" r="14" fill="#0d1519"/>
+    <circle cx="69.0" cy="169.3" r="10" fill="#3bb3cc"/>
+    <circle cx="209.2" cy="196.1" r="16.5" fill="#0d1519"/>
+    <circle cx="209.2" cy="196.1" r="12.5" fill="#e08c1a"/>
+    <circle cx="128.0" cy="128.0" r="17" fill="#3bb3cc"/>
+  </g>
+  <text x="495.44" y="288" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="88"
+        font-weight="700" letter-spacing="-2.6" fill="#e8f2f5">Blast<tspan
+        fill="#3bb3cc">Radius</tspan></text>
+  <text x="495.44" y="342" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30"
+        fill="#8fadb9">Cross-repo infrastructure memory</text>
+  <text x="495.44" y="384" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30"
+        fill="#8fadb9">for coding agents</text>
+  <rect x="495.44" y="424" width="62" height="3" fill="#3bb3cc" opacity="0.6"/>
+  <text x="495.44" y="474" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="24"
+        fill="#e8f2f5" opacity="0.92">43 advisories from OSV.</text>
+  <text x="495.44" y="508" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="24"
+        fill="#3bb3cc">9 that reach your pins.</text>
+</svg>
