@@ -1,6 +1,6 @@
 {
   "name": "blastradius",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Cross-repo infrastructure memory. Warns you who else depends on an artifact before you change it.",
   "author": {
     "name": "Harris Ahmad",

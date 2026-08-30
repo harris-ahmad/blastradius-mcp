@@ -11,7 +11,7 @@
       "source": "./plugin",
       "displayName": "BlastRadius",
       "description": "Indexes Docker images, Terraform modules, GitHub Actions, Helm charts and npm packages across every repo you open, tells you who else is affected before you change one, and watches those pins for CVEs. Requires `pip install blastradius-mcp`.",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "author": {
         "name": "Harris Ahmad"
       },
