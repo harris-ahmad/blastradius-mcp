@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "blastradius": {
+      "type": "stdio",
+      "command": "blastradius",
+      "args": ["serve"]
+    }
+  }
+}

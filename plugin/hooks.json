@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "blastradius hook inject 2>/dev/null || echo '{\"continue\":true,\"suppressOutput\":true}'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "blastradius hook capture 2>/dev/null || echo '{\"continue\":true,\"suppressOutput\":true}'",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
