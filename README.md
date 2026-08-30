@@ -8,6 +8,8 @@
 
 # BlastRadius
 
+[![ci](https://github.com/harris-ahmad/blastradius-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/harris-ahmad/blastradius-mcp/actions/workflows/ci.yml)
+
 It remembers what every repository you open depends on, tells your agent who else
 is affected *before* it changes one, and watches those dependencies for
 vulnerabilities while nobody is asking.
@@ -279,8 +281,13 @@ traps   0 false positive(s)
 
 **`specs` is the one that matters.** A model that quietly normalises `^18.2.0` to
 `18.2.0` scores full recall while destroying the exact signal the tool reports
-on. `grade.py` exits non-zero on any miss or trap, so it works as a CI
-regression test on extraction quality.
+on. `grade.py` exits non-zero on any miss or trap.
+
+Scoring a real run needs Claude, so it stays a local step. What CI does check
+is everything around it: `fixtures/check-corpus.py` generates the corpus and
+fails if `make-fixtures.sh` and `expected.json` have drifted apart, and
+`tests/test_grader.py` scores a synthetic index built from the ground truth so
+the grader cannot quietly start reporting a number nobody can check.
 
 ## Limitations
 
@@ -289,18 +296,14 @@ regression test on extraction quality.
   CVE-exposure signal rather than a breakage signal. Terraform modules, Actions
   and base images are where a shared artifact genuinely *is* the same thing.
 - **pnpm lockfiles are not read.**
-- **Reusable workflow identifiers are not canonicalised** —
-  `org/.github/.github/workflows/ci.yml@v2` records as written rather than
-  collapsing to `org/.github`, so it will not match across repos.
 - **The index only knows repos you have opened** with BlastRadius installed.
 
 ## Status
 
 Early, but complete across all four lanes and verified end to end on two
-machines. **255 tests.**
+machines. **303 tests**, run on Python 3.11–3.13 in CI.
 
-Next: plugin marketplace packaging, pnpm lockfiles, workflow identifier
-canonicalisation.
+Next: plugin marketplace packaging, pnpm lockfiles.
 
 Deliberately not built: a web viewer. The read-side UI is what made the original
 BlastRadius something you had to deploy, and a local tool that answers through

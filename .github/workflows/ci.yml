@@ -1,0 +1,120 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: tests (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - run: pip install -e ".[dev]"
+
+      # `python -m pytest`, not bare `pytest`, for the same reason conftest.py
+      # exists: a shadowing interpreter is the confusing failure here.
+      - run: python -m pytest -q
+
+  install:
+    name: install and doctor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # A plain install, not editable. Editable hides packaging mistakes
+      # behind a .pth pointing back at the source tree, so the wheel could be
+      # missing a module and every test would still pass.
+      - run: pip install .
+
+      # The first thing a new user runs is `install`, and the second is
+      # `doctor`. This is that path on a machine that has never seen the tool:
+      # doctor exits non-zero unless the hooks are registered AND actually run.
+      # Run from outside the checkout, the way a user does: doctor's
+      # staleness check compares the installed package against a source tree
+      # sitting above the working directory, and wheel mtimes are not stable
+      # enough to assert on. tests/test_install.py covers that check directly.
+      - name: install into a throwaway Claude config
+        working-directory: ${{ runner.temp }}
+        env:
+          CLAUDE_CONFIG_DIR: ${{ runner.temp }}/claude
+        run: |
+          mkdir -p "$CLAUDE_CONFIG_DIR"
+          blastradius install
+          blastradius doctor
+
+      - name: the CLI answers without an index
+        working-directory: ${{ runner.temp }}
+        env:
+          BLASTRADIUS_DB: ${{ runner.temp }}/index.db
+        run: |
+          blastradius stats
+          blastradius repos
+          blastradius config
+
+  fixtures:
+    name: fixture corpus
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -e ".[dev]"
+
+      # make-fixtures.sh and expected.json have to agree, and nothing else
+      # forces them to. This runs the generator for real and checks the two
+      # describe the same corpus. It does not call Claude, so it says nothing
+      # about extraction quality — only that a scoring run would be meaningful.
+      # The grader itself is covered by tests/test_grader.py, which scores a
+      # synthetic index built from the ground truth. Scoring a real capture
+      # run needs Claude, so it stays a local step.
+      - run: python fixtures/check-corpus.py
+
+  assets:
+    name: assets match their generator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The SVGs are generated, so hand-editing one works until the next
+      # regeneration silently reverts it. Fail here instead of there.
+      - run: python assets/generate.py
+
+      - name: no drift
+        run: |
+          if ! git diff --exit-code -- assets/; then
+            echo "::error::assets/ differs from what assets/generate.py produces."
+            echo "::error::Edit the generator, run it, and commit both."
+            exit 1
+          fi
