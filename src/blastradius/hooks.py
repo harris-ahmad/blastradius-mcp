@@ -187,8 +187,14 @@ def inject(payload: dict[str, Any]) -> dict[str, Any]:
 
         by_repo: dict[str, dict[str, Any]] = {}
         for row in others:
+            # Show the declared spec, never the resolved version alone. A
+            # lockfile turning `^18.2.0` into `18.3.1` is useful detail, but
+            # printing only `18.3.1` states the opposite of the truth: the
+            # caret is what says whether a major bump reaches this consumer.
+            # This hook exists because dropping the operator destroys the
+            # signal, so it must not drop the operator itself.
             entry = by_repo.setdefault(row["repository"], {
-                "spec": row["resolved_version"] or row["version_spec"],
+                "spec": _display_spec(row["version_spec"], row["resolved_version"]),
                 "pinning": classify_pinning(row["version_spec"], row["type"]),
                 "where": [],
             })
@@ -252,6 +258,19 @@ def _where(reference: str, relative: str) -> str:
     if sep and there == here:
         return f" {base}:{line}"
     return f" {reference}"
+
+
+def _display_spec(spec: str | None, resolved: str | None) -> str | None:
+    """What a consumer pins, and what that currently installs.
+
+    `^18.2.0→18.3.1` when a lockfile narrows the range, plain `^18.2.0` when
+    it does not, and the resolved version alone only when nothing was declared.
+    """
+    if not spec:
+        return resolved
+    if resolved and resolved != spec:
+        return f"{spec}\u2192{resolved}"
+    return spec
 
 
 def _render_compact(relative: str, entries: list[dict], config) -> str:

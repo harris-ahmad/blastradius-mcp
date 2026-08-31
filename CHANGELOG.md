@@ -11,7 +11,17 @@ the six-repository corpus in `fixtures/`, which has 39 required artifacts and
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Injection printed the resolved version in place of the declared range.**
+  A consumer declaring `^18.2.0` with a lockfile at `18.3.1` rendered as
+  `18.3.1 partial` — the caret gone, the resolved number shown as if it were
+  the pin. This is the failure the whole tool is built to prevent, committed
+  by the tool itself. A real session read it and concluded a React 19 bump
+  would leave two repos on mixed majors, when the caret caps that consumer at
+  18 and the bump cannot reach it: the opposite conclusion, from a dropped
+  operator. Consumers now render as `^18.2.0→18.3.1`, and as the spec alone
+  when no lockfile narrows it. Costs about two tokens per consumer.
 
 ## [0.2.1] — 2026-08-30
 

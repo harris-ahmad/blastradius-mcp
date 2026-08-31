@@ -562,3 +562,61 @@ class TestBashInjection:
                             "tool_input": {"file_path": str(root / "package.json"),
                                            "command": "irrelevant"}})
         assert "react" in out["hookSpecificOutput"]["additionalContext"]
+
+
+class TestSpecIsNeverReplacedByTheResolvedVersion:
+    """The bug this hook exists to prevent, committed by the hook itself.
+
+    Injection showed `resolved_version or version_spec`, so a consumer
+    declaring `^18.2.0` and locking `18.3.1` rendered as `18.3.1 partial` —
+    the caret gone, the resolved number presented as the pin. A real session
+    read that and concluded a React 19 bump would put two repos on mixed
+    majors, when the caret caps that consumer at 18 and the bump cannot reach
+    it. Opposite conclusion, from a dropped operator.
+    """
+
+    def _shared(self, db, spec, resolved):
+        store = Store(db)
+        store.record("org/api", [dep("npm_package", "react", "18.3.1", "package.json")])
+        store.record("org/other", [Dependency(
+            type="npm_package", identifier="react", version_spec=spec,
+            resolved_version=resolved, file_path="package.json", line_number=4)])
+
+    def test_the_operator_survives_a_lockfile_resolution(self, repo):
+        root, db = repo
+        self._shared(db, "^18.2.0", "18.3.1")
+
+        ctx = hooks.inject({"cwd": str(root), "session_id": "spec1",
+                            "tool_input": {"file_path": str(root / "package.json")},
+                            })["hookSpecificOutput"]["additionalContext"]
+
+        assert "^18.2.0" in ctx, "the declared range must be visible"
+        assert "18.3.1" in ctx, "what it installs today is still useful"
+
+    def test_a_bare_pin_is_not_doubled_up(self, repo):
+        root, db = repo
+        self._shared(db, "18.3.1", "18.3.1")
+        ctx = hooks.inject({"cwd": str(root), "session_id": "spec2",
+                            "tool_input": {"file_path": str(root / "package.json")},
+                            })["hookSpecificOutput"]["additionalContext"]
+        assert "18.3.1→18.3.1" not in ctx
+
+    def test_no_lockfile_shows_the_spec_alone(self, repo):
+        root, db = repo
+        self._shared(db, "^4.17.21", None)
+        ctx = hooks.inject({"cwd": str(root), "session_id": "spec3",
+                            "tool_input": {"file_path": str(root / "package.json")},
+                            })["hookSpecificOutput"]["additionalContext"]
+        assert "^4.17.21" in ctx
+
+    @pytest.mark.parametrize("fmt", ["compact", "verbose"])
+    def test_both_formats_keep_it(self, repo, monkeypatch, fmt):
+        from blastradius.config import Config, InjectConfig
+        root, db = repo
+        self._shared(db, "^18.2.0", "18.3.1")
+        monkeypatch.setattr(hooks, "load_config",
+                            lambda: Config(inject=InjectConfig(format=fmt)))
+        ctx = hooks.inject({"cwd": str(root), "session_id": f"spec-{fmt}",
+                            "tool_input": {"file_path": str(root / "package.json")},
+                            })["hookSpecificOutput"]["additionalContext"]
+        assert "^18.2.0" in ctx

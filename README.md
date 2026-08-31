@@ -293,6 +293,12 @@ Advisories are matched against what your pins can **actually resolve to**.
 | `^4.17.21` | not affected | floor already fixed |
 | `latest` | **kept** | unknowable — see below |
 
+Injection shows both halves — `^18.2.0→18.3.1` — because the range and the
+installed version answer different questions. The range says whether a bump
+reaches that consumer at all; the installed version says what is running
+today. Showing only the second silently turns a capped caret into what looks
+like an exact pin.
+
 **Lockfiles make it exact.** A manifest says `^5.2.0`, which permits 5.2.0 and
 therefore every advisory affecting it. `package-lock.json` says `5.4.19`, which
 permits none of them. On the fixture corpus that is the difference between 13
