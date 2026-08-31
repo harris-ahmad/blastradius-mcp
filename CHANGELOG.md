@@ -11,21 +11,13 @@ the six-repository corpus in `fixtures/`, which has 39 required artifacts and
 
 ## [Unreleased]
 
-### Fixed
+Nothing yet.
 
-- **Injection printed the resolved version in place of the declared range.**
-  A consumer declaring `^18.2.0` with a lockfile at `18.3.1` rendered as
-  `18.3.1 partial` — the caret gone, the resolved number shown as if it were
-  the pin. This is the failure the whole tool is built to prevent, committed
-  by the tool itself. A real session read it and concluded a React 19 bump
-  would leave two repos on mixed majors, when the caret caps that consumer at
-  18 and the bump cannot reach it: the opposite conclusion, from a dropped
-  operator. Consumers now render as `^18.2.0→18.3.1`, and as the spec alone
-  when no lockfile narrows it. Costs about two tokens per consumer.
+## [0.2.2] — 2026-08-31
 
-## [0.2.1] — 2026-08-30
-
-One correctness fix, on the mechanism the whole tool rests on.
+Two fixes to the push side, both found by running an ordinary request
+against an indexed corpus rather than by testing. (0.2.1 was prepared but
+never published; its fix ships here.)
 
 ### Fixed
 
@@ -42,6 +34,15 @@ One correctness fix, on the mechanism the whole tool rests on.
   `acme/web:package.json`, ~42 tokens, and the agent surfaces the other
   consumer unprompted.
 - `blastradius cost | head` raised `BrokenPipeError` instead of ending quietly.
+- **Injection printed the resolved version in place of the declared range.**
+  A consumer declaring `^18.2.0` with a lockfile at `18.3.1` rendered as
+  `18.3.1 partial` — the caret gone, the resolved number shown as if it were
+  the pin. This is the failure the whole tool is built to prevent, committed
+  by the tool itself. A real session read it and concluded a React 19 bump
+  would leave two repos on mixed majors, when the caret caps that consumer at
+  18 and the bump cannot reach it: the opposite conclusion, from a dropped
+  operator. Consumers now render as `^18.2.0→18.3.1`, and as the spec alone
+  when no lockfile narrows it. Costs about two tokens per consumer.
 
 ## [0.2.0] — 2026-08-30
 
@@ -151,7 +152,7 @@ Relative to the original BlastRadius this replaces:
 - The index only knows repositories you have opened — see `blastradius index` in
   0.2.0.
 
-[Unreleased]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.2.1...HEAD
-[0.2.1]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.2.0...v0.2.1
+[Unreleased]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.2.0...v0.2.2
 [0.2.0]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/harris-ahmad/blastradius-mcp/releases/tag/v0.1.0
