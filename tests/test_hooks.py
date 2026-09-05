@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 
 import pytest
 
@@ -620,3 +621,45 @@ class TestSpecIsNeverReplacedByTheResolvedVersion:
                             "tool_input": {"file_path": str(root / "package.json")},
                             })["hookSpecificOutput"]["additionalContext"]
         assert "^18.2.0" in ctx
+
+
+class TestTheCheapPathStaysCheap:
+    """A non-manifest shell command must not pay for the index.
+
+    Bash matching puts this hook in front of every command an agent runs, and
+    almost none of them are about a manifest. Asserting on imports rather than
+    wall time keeps the guard meaningful on a loaded CI runner: if someone
+    moves `from .store import Store` back to module scope, this fails and says
+    exactly what happened.
+    """
+
+    HEAVY = ("blastradius.store", "blastradius.config", "blastradius.scoring",
+             "sqlite3", "dataclasses")
+
+    def _modules_after(self, payload: dict) -> set[str]:
+        """Run one hook in a fresh interpreter and report what it imported."""
+        program = (
+            "import json, sys\n"
+            "from blastradius import hooks\n"
+            f"hooks.inject({payload!r})\n"
+            "print(json.dumps(sorted(sys.modules)))\n"
+        )
+        result = subprocess.run([sys.executable, "-c", program],
+                                capture_output=True, text=True, check=True)
+        return set(json.loads(result.stdout))
+
+    def test_an_ordinary_command_imports_nothing_expensive(self, tmp_path):
+        loaded = self._modules_after({
+            "cwd": str(tmp_path), "session_id": "cheap",
+            "tool_input": {"command": "git status"}})
+        leaked = sorted(m for m in self.HEAVY if m in loaded)
+        assert leaked == [], f"a non-manifest command imported {leaked}"
+
+    def test_a_manifest_does_load_them(self, repo):
+        """The other half of the claim: deferred, not deleted."""
+        root, _ = repo
+        loaded = self._modules_after({
+            "cwd": str(root), "session_id": "notcheap",
+            "tool_input": {"file_path": str(root / "package.json")}})
+        assert "blastradius.store" in loaded
+        assert "blastradius.config" in loaded

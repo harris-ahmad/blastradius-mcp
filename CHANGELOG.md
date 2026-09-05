@@ -31,8 +31,14 @@ the six-repository corpus in `fixtures/`, which has 39 required artifacts and
   `Store` globally while the MCP SDK runs tool handlers on a worker pool, so a
   single shared handle would raise on the second thread to touch it.
 
-Injection latency on a non-manifest shell command is unchanged at ~62ms; that
-cost is Python interpreter startup and imports, not anything above.
+- **The hook stopped paying for the index to say nothing.** Matching `Bash`
+  puts this in front of every command an agent runs, and almost none are about
+  a manifest — but each one imported `config`, `store`, `scoring`, `sqlite3`
+  and `dataclasses` before deciding that. The predicates moved to a
+  dependency-free `manifest` module, the rest loads only once a call gets past
+  them, and `blastradius hook` is served without building the argument parser:
+  **65ms → 27.8ms**, against a 10.4ms bare-interpreter floor. A manifest read
+  still pays the full cost, as it should.
 
 ## [0.2.2] — 2026-08-31
 

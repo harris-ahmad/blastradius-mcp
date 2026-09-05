@@ -1,13 +1,34 @@
 """blastradius — entry point for the MCP server, the hooks, and the daemon."""
 from __future__ import annotations
 
-import argparse
 import json
 import signal
 import sys
 
 
+def _hook_fast_path() -> bool:
+    """Serve `blastradius hook <name>` without building the parser.
+
+    Every shell command an agent runs reaches this process, and argparse costs
+    ~10ms to import and build for an invocation whose shape is already known.
+    Anything unexpected falls through to the real parser, so this can only
+    make the common case cheaper, never change what is accepted.
+    """
+    if sys.argv[1:2] != ["hook"] or len(sys.argv) != 3:
+        return False
+    if sys.argv[2] not in ("inject", "capture"):
+        return False
+    from .hooks import run
+    run(sys.argv[2])
+    return True
+
+
 def main() -> None:
+    if _hook_fast_path():
+        return
+
+    import argparse
+
     # `blastradius cost | head` closes the pipe early, and the default Python
     # handler turns that into a traceback on a command that worked fine.
     # Restoring the default disposition makes the process end quietly, the way

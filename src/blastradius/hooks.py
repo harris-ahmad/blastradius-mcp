@@ -18,10 +18,53 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .config import load as load_config
-from .repo import (find_manifests, is_manifest, manifest_in_command, repo_root, resolve_repository, unread_manifests)
-from .scoring import QUALITY_RANK, classify_pinning
-from .store import Store
+# Only the pure predicates at module scope. Everything below them —
+# config, the store, git, scoring — is imported inside the functions, after
+# the cheap check has decided this call is about a manifest at all. Bash
+# matching means an agent's every `ls` and `git status` runs this module, and
+# almost none of them get past that check; paying ~25ms of imports to answer
+# "no" would tax the whole session.
+from .manifest import is_manifest, manifest_in_command
+
+# Filled in by _load_deps() on the first call that gets past the manifest
+# check. They stay module attributes rather than function-local imports so
+# tests can still patch `hooks.Store`, and so a patched value is never
+# overwritten by the lazy load.
+load_config = None
+Store = None
+resolve_repository = None
+repo_root = None
+find_manifests = None
+unread_manifests = None
+QUALITY_RANK = None
+classify_pinning = None
+_deps_loaded = False
+
+
+def _load_deps() -> None:
+    """Import the expensive half, once, and only when it is needed."""
+    global load_config, Store, resolve_repository, repo_root
+    global find_manifests, unread_manifests, QUALITY_RANK, classify_pinning
+
+    global _deps_loaded
+    if _deps_loaded:
+        return
+    _deps_loaded = True
+    from .config import load as _load_config
+    from .repo import (find_manifests as _find, repo_root as _root,
+                       resolve_repository as _resolve,
+                       unread_manifests as _unread)
+    from .scoring import QUALITY_RANK as _rank, classify_pinning as _classify
+    from .store import Store as _Store
+
+    load_config = load_config or _load_config
+    Store = Store or _Store
+    resolve_repository = resolve_repository or _resolve
+    repo_root = repo_root or _root
+    find_manifests = find_manifests or _find
+    unread_manifests = unread_manifests or _unread
+    QUALITY_RANK = QUALITY_RANK or _rank
+    classify_pinning = classify_pinning or _classify
 
 _PASS = {"continue": True, "suppressOutput": True}
 
@@ -97,6 +140,7 @@ def inject(payload: dict[str, Any]) -> dict[str, Any]:
         _debug(f"not a manifest file: {file_path}")
         return _PASS
 
+    _load_deps()
     config = load_config()
     if not config.inject.enabled:
         _debug("injection disabled in config")
@@ -321,6 +365,7 @@ def capture(payload: dict[str, Any]) -> dict[str, Any]:
     only decides *when* extraction is owed, which is the part that must not be
     left to chance.
     """
+    _load_deps()
     config = load_config()
     cwd = payload.get("cwd") or "."
     repository = resolve_repository(cwd)
