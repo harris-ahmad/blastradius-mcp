@@ -11,7 +11,28 @@ the six-repository corpus in `fixtures/`, which has 39 required artifacts and
 
 ## [Unreleased]
 
-Nothing yet.
+### Performance
+
+- **Manifest discovery no longer walks vendored trees.** `find_manifests`
+  used `rglob("*")` and applied the skip list *after* the walk, so it
+  descended fully into `node_modules` and `.git` before discarding what it
+  found — 180ms and 11,000 stat calls to locate two files in a small repo,
+  and seconds in a real monorepo. `os.walk` with in-place pruning never
+  enters those trees: **180ms → 0.05ms**, identical results. This runs on
+  every session end.
+- **"Which files are already indexed" is a query again.** Both hooks loaded
+  every dependency row in the index and filtered in Python, so the cost grew
+  with the whole index rather than with the repository being asked about —
+  27ms at 8,000 rows. `Store.indexed_files()` uses the `idx_deps_repo` index
+  that already existed: **27ms → 0.4ms**.
+- **One database connection per hook instead of thirteen.** Each query opened
+  a fresh connection and re-ran three PRAGMAs. Connections are now per-thread
+  and reused, which is required rather than incidental: `server.py` caches one
+  `Store` globally while the MCP SDK runs tool handlers on a worker pool, so a
+  single shared handle would raise on the second thread to touch it.
+
+Injection latency on a non-manifest shell command is unchanged at ~62ms; that
+cost is Python interpreter startup and imports, not anything above.
 
 ## [0.2.2] — 2026-08-31
 

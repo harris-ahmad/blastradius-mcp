@@ -339,8 +339,7 @@ def capture(payload: dict[str, Any]) -> dict[str, Any]:
     _debug(f"{len(manifests)} manifest(s) under {root}")
 
     store = Store()
-    known = {row["file_path"] for row in store.all_dependencies()
-             if row["repository"] == repository}
+    known = store.indexed_files(repository)
     unseen = unread_manifests(root, repository, known,
                               store.last_scanned(repository),
                               exclude=config.exclude.path)

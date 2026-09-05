@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -104,22 +105,56 @@ def identifier_candidates(identifier: str, artifact_type: str | None = None) -> 
 class Store:
     def __init__(self, db_path: Path | str = DEFAULT_DB_PATH) -> None:
         self.db_path = Path(db_path).expanduser()
+        # Thread-local, not a single shared handle. sqlite3 forbids using a
+        # connection from a thread other than the one that created it, and the
+        # MCP server caches one Store globally while the SDK runs tool handlers
+        # on a worker pool — a shared handle would fail there on the second
+        # call to land on a different thread.
+        self._local = threading.local()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
 
     @contextmanager
     def _conn(self) -> Iterator[sqlite3.Connection]:
-        conn = sqlite3.connect(self.db_path, timeout=10.0)
-        conn.row_factory = sqlite3.Row
-        try:
+        """One connection per Store, opened once and reused.
+
+        A single inject() asks the index a dozen questions, and each one used
+        to open a fresh connection and re-run three PRAGMAs. Reusing the
+        connection keeps WAL and the busy timeout exactly as they were — they
+        are set once, on the same connection — while cutting thirteen opens
+        to one. The connection closes with the process, which for a hook is
+        milliseconds later; long-lived callers get close().
+        """
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(self.db_path, timeout=10.0)
+            conn.row_factory = sqlite3.Row
             # WAL lets the CVE daemon read while a capture hook writes.
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA busy_timeout=10000")
             conn.execute("PRAGMA foreign_keys=ON")
+            self._local.conn = conn
+        try:
             yield conn
             conn.commit()
-        finally:
+        except Exception:
+            # A failed write must not leave a half-applied statement visible
+            # to the next caller, which now shares this connection.
+            conn.rollback()
+            raise
+
+    def close(self) -> None:
+        """Close this thread's connection. Other threads keep their own."""
+        conn = getattr(self._local, "conn", None)
+        if conn is not None:
             conn.close()
+            self._local.conn = None
+
+    def __enter__(self) -> "Store":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
 
     def _init_schema(self) -> None:
         with self._conn() as conn:
@@ -476,6 +511,24 @@ class Store:
                 summary[key]["worst_severity"] = row["severity"]
 
         return summary
+
+    def indexed_files(self, repository: str) -> set[str]:
+        """Which of one repository's files the index already holds rows from.
+
+        Both hooks ask this on every session. Loading every dependency row in
+        the index and filtering in Python cost 27ms at 8,000 rows and grew
+        with the whole index rather than with the repository being asked
+        about — so it got slower for everyone who indexed more repos.
+        idx_deps_repo already existed to answer this.
+        """
+        with self._conn() as conn:
+            return {row["file_path"] for row in conn.execute(
+                """SELECT DISTINCT d.file_path
+                   FROM dependencies d
+                   JOIN repositories r ON r.id = d.repository_id
+                   WHERE r.name = ?""",
+                (repository,),
+            )}
 
     def last_scanned(self, repository: str) -> str | None:
         """When this repository's manifests were last read, if ever."""

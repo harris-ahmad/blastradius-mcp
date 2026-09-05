@@ -73,3 +73,59 @@ class TestWhatCountsAsAManifest:
     ])
     def test_boundary(self, path, expected):
         assert is_manifest(path) is expected
+
+
+class TestTheWalkDoesNotEnterVendoredTrees:
+    """The fix was 180ms -> 0.05ms on an 11k-file repo, but a timing assertion
+    would be flaky on a loaded CI box. What actually matters is structural:
+    the skipped directories are never descended into. Assert that instead."""
+
+    def _repo(self, tmp_path):
+        root = tmp_path / "repo"
+        (root / "node_modules" / "left-pad").mkdir(parents=True)
+        (root / ".git" / "objects" / "ab").mkdir(parents=True)
+        (root / ".github" / "workflows").mkdir(parents=True)
+        (root / "src").mkdir()
+        (root / "package.json").write_text("{}")
+        (root / ".github" / "workflows" / "ci.yml").write_text("on: push\n")
+        # Manifest-shaped files in trees that must never be walked.
+        (root / "node_modules" / "left-pad" / "package.json").write_text("{}")
+        (root / ".git" / "objects" / "ab" / "Dockerfile").write_text("FROM x\n")
+        return root
+
+    def test_skipped_trees_are_never_entered(self, tmp_path, monkeypatch):
+        import os as _os
+        from blastradius import repo as repo_mod
+
+        root = self._repo(tmp_path)
+        visited = []
+        real_walk = _os.walk
+
+        def recording(top, *a, **k):
+            for entry in real_walk(top, *a, **k):
+                visited.append(entry[0])
+                yield entry
+
+        monkeypatch.setattr(repo_mod.os, "walk", recording)
+        repo_mod.find_manifests(root)
+
+        entered = [v for v in visited
+                   if "node_modules" in v or f"{_os.sep}.git{_os.sep}" in v
+                   or v.endswith(f"{_os.sep}.git")]
+        assert entered == [], f"descended into trees it should prune: {entered}"
+
+    def test_vendored_manifests_are_not_reported(self, tmp_path):
+        from blastradius.repo import find_manifests
+        root = self._repo(tmp_path)
+        found = sorted(p.relative_to(root).as_posix() for p in find_manifests(root))
+        assert found == [".github/workflows/ci.yml", "package.json"]
+
+    def test_the_limit_stops_the_walk_early(self, tmp_path):
+        from blastradius.repo import find_manifests
+        root = tmp_path / "many"
+        root.mkdir()
+        for i in range(20):
+            d = root / f"svc{i}"
+            d.mkdir()
+            (d / "Dockerfile").write_text("FROM alpine\n")
+        assert len(find_manifests(root, limit=5)) == 5

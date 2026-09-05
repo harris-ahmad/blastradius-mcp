@@ -88,16 +88,12 @@ def survey(paths: list[Path]) -> list[Candidate]:
     store = Store()
     config = load_config()
 
-    known: dict[str, set[str]] = {}
-    for row in store.all_dependencies():
-        known.setdefault(row["repository"], set()).add(row["file_path"])
-
     candidates = []
     for root in paths:
         repository = resolve_repository(root)
         if not repository or config.exclude.repository(repository):
             continue
-        unseen = unread_manifests(root, repository, known.get(repository, set()),
+        unseen = unread_manifests(root, repository, store.indexed_files(repository),
                                   store.last_scanned(repository),
                                   exclude=config.exclude.path)
         candidates.append(Candidate(root=root, repository=repository, unseen=unseen))

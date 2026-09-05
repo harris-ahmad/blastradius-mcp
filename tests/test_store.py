@@ -277,3 +277,74 @@ class TestResolvedVersionReachesReaders:
             if (c.get("resolved_version") or c["version_spec"]) in reaches
         }
         assert exposed == {"acme/web"}
+
+
+class TestIndexedFiles:
+    """capture() and the bootstrap both ask which of a repo's files are
+    already recorded. Loading the whole table and filtering in Python made the
+    answer cost grow with the entire index rather than with the repository
+    asked about."""
+
+    def test_only_that_repository_is_returned(self, store):
+        store.record("org/api", [dep("docker_image", "alpine", "3.19", "Dockerfile"),
+                                 dep("npm_package", "react", "^18.0.0", "package.json")])
+        store.record("org/web", [dep("docker_image", "nginx", "1.27", "Dockerfile")])
+
+        assert store.indexed_files("org/api") == {"Dockerfile", "package.json"}
+        assert store.indexed_files("org/web") == {"Dockerfile"}
+
+    def test_an_unknown_repository_is_empty_not_an_error(self, store):
+        assert store.indexed_files("org/never-seen") == set()
+
+    def test_a_file_recorded_twice_appears_once(self, store):
+        store.record("org/api", [dep("npm_package", "react", "^18.0.0", "package.json", 4),
+                                 dep("npm_package", "lodash", "^4.0.0", "package.json", 5)])
+        assert store.indexed_files("org/api") == {"package.json"}
+
+
+class TestConnectionReuse:
+    def test_one_store_serves_many_threads(self, tmp_path):
+        """server.py caches a single Store globally and the MCP SDK runs tool
+        handlers on a worker pool, so a connection shared across threads would
+        raise. Connections are per-thread for that reason."""
+        import threading
+        shared = Store(tmp_path / "threads.db")
+        errors: list[Exception] = []
+
+        def work(n: int) -> None:
+            try:
+                for i in range(20):
+                    shared.record(f"org/r{n}-{i}",
+                                  [dep("npm_package", f"p{i}", "1.0.0", "package.json")])
+                    shared.indexed_files(f"org/r{n}-{i}")
+            except Exception as exc:            # noqa: BLE001 - reported, not swallowed
+                errors.append(exc)
+
+        threads = [threading.Thread(target=work, args=(n,)) for n in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert errors == []
+        assert len({r["repository"] for r in shared.all_dependencies()}) == 80
+
+    def test_a_failed_statement_does_not_leak_into_the_next_caller(self, store):
+        import sqlite3
+        with pytest.raises(sqlite3.OperationalError):
+            with store._conn() as conn:
+                conn.execute(
+                    "INSERT INTO repositories (name, last_seen_at) VALUES ('ghost','t')")
+                conn.execute("THIS IS NOT SQL")
+
+        with store._conn() as conn:
+            surviving = conn.execute(
+                "SELECT COUNT(*) AS n FROM repositories WHERE name='ghost'"
+            ).fetchone()["n"]
+        assert surviving == 0
+
+    def test_close_is_safe_to_call_twice(self, store):
+        store.indexed_files("org/api")
+        store.close()
+        store.close()
+        assert store.indexed_files("org/api") == set()   # reopens on demand
