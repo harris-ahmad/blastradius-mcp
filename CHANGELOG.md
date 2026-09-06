@@ -11,6 +11,14 @@ the six-repository corpus in `fixtures/`, which has 39 required artifacts and
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.3.0] — 2026-09-06
+
+Python repositories are no longer half-invisible. Minor rather than patch:
+a new artifact type is new surface, and plugin users only see it once the
+marketplace entry moves.
+
 ### Added
 
 - **Python is a sixth artifact type.** `pyproject.toml` and requirements files
@@ -211,7 +219,8 @@ Relative to the original BlastRadius this replaces:
 - The index only knows repositories you have opened — see `blastradius index` in
   0.2.0.
 
-[Unreleased]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.2.0...v0.2.2
 [0.2.0]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.1.0...v0.2.0
