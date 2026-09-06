@@ -328,10 +328,86 @@ jobs:
 EOF
 finish legacy-cron
 
+# ── 7. analytics — Python. Poetry and PEP 440 dialects in one repo, plus a
+#      lockfile that narrows a range, and traps a regex would fall for. ──────
+new_repo analytics
+mkdir -p analytics/.github/workflows analytics/requirements
+
+cat > analytics/pyproject.toml <<'EOF'
+[project]
+name = "analytics"
+requires-python = ">=3.11"
+dependencies = [
+  "requests>=2.31.0,<3.0.0",
+  "urllib3==2.2.1",
+  "pandas~=2.2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.poetry.dependencies]
+django = "^4.2.0"
+redis = "~5.0.1"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "*"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+EOF
+
+# The lockfile narrows django from ^4.2.0 to a single version. Parsed by
+# lockfile.py, never read by the model.
+cat > analytics/poetry.lock <<'EOF'
+[[package]]
+name = "Django"
+version = "4.2.11"
+description = "A high-level Python Web framework."
+
+[[package]]
+name = "requests"
+version = "2.32.3"
+description = "Python HTTP for Humans."
+EOF
+
+cat > analytics/requirements/prod.txt <<'EOF'
+# Traps: a -r include and an editable install are not dependencies.
+-r ../constraints.txt
+-e ./libs/internal-helpers
+boto3==1.34.100
+EOF
+
+cat > analytics/Dockerfile <<'EOF'
+FROM python:3.11-slim
+WORKDIR /app
+COPY . .
+RUN pip install --no-cache-dir -r requirements/prod.txt
+EOF
+
+cat > analytics/.github/workflows/test.yml <<'EOF'
+name: test
+on: [push]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+EOF
+
+finish analytics
+
+
 # ── Summary ─────────────────────────────────────────────────────────────────
 cat <<EOF
 
-Built 6 repos in $TARGET
+Built 7 repos in $TARGET
 
   payments        go       stage aliases, SHA-pinned action, registry modules
   checkout        node     ARG base, heredoc, ranges, workspace protocol
@@ -339,14 +415,16 @@ Built 6 repos in $TARGET
   platform-infra  tf       git:: sources, local modules, submodule paths
   notifications   helm     chart deps, registry-with-port image
   legacy-cron     shell    everything unpinned
+  analytics       python   PEP 440 + Poetry dialects, lockfile, -r and -e traps
 
 Shared across repos, so the inject hook has something to say:
   actions/checkout   6 repos, pinned 4 different ways (v4 / v3 / main / SHA)
   lodash             3 repos, 3 different specs
   react              2 repos, ^18.2.0 vs 18.3.1
   terraform-aws-modules/vpc/aws   2 repos
-  redis              docker image in legacy-cron, npm package in checkout
-                     — the type-collision case
+  redis              docker image in legacy-cron, npm package in checkout,
+                     python package in analytics — the type-collision case
+  python             docker image in analytics, alongside its own packages
 
 Next:
   cd $TARGET/payments && claude

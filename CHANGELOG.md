@@ -11,7 +11,32 @@ the six-repository corpus in `fixtures/`, which has 39 required artifacts and
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Python is a sixth artifact type.** `pyproject.toml` and requirements files
+  are indexed, covering both dialects that appear in them: PEP 440
+  (`>=2.31.0,<3.0.0`, `==2.2.1`, `~=2.2.0`) and Poetry's `^`/`~`, which are
+  npm's operators over Python's version syntax. `poetry.lock`, `uv.lock` and
+  pinned requirement lines are parsed for resolved versions — never read by
+  the model, like every other lockfile. PyPI joins npm and GitHub Actions as a
+  monitored OSV ecosystem. Names are folded per PEP 503, so `Flask-Login` in a
+  manifest matches `flask_login` in a lock.
+- A `pep440` version scheme, because Python is not semver: releases have any
+  number of segments, carry epochs, and order suffixes dev < pre < release <
+  post. The OSV range walk moved to `ranges.py` and is now shared, so npm and
+  PyPI cannot drift into answering the same advisory differently.
+- `acme/analytics` joins the fixture corpus — both dialects, a lockfile that
+  narrows a range, and `-r` include and `-e` editable traps. First graded
+  capture: **9/9 recall, 9/9 specs, 0 traps**.
+
+### Fixed
+
+- **A new artifact type was indexed and then silently dropped from every
+  injection.** The list of types was written out three times — the store's
+  schema, the monitorable-artifacts query, and the injection config's
+  allowlist — and nothing kept them in sync. `python_package` was captured
+  correctly and filtered out before it could ever be shown. All three now
+  derive from one source, with a test that fails if they diverge.
 
 ## [0.2.3] — 2026-08-31
 

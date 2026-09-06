@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+import tomllib
 from pathlib import Path
 
 # yarn.lock:  "lodash@^4.17.20:"  then  '  version "4.17.21"'
@@ -105,6 +106,81 @@ def npm_resolved_versions(root: str | Path) -> dict[str, str]:
     for lock_name, reader in (("yarn.lock", _from_yarn_lock),
                               ("package-lock.json", _from_package_lock)):
         for path in root.rglob(lock_name):
+            if _SKIP_DIRS & set(path.relative_to(root).parts[:-1]):
+                continue
+            resolved.update(reader(path))
+
+    return resolved
+
+
+# requirements.txt: `django==4.2.1`, `requests[security]==2.31.0 ; python_version>="3.9"`.
+# Only `==` is a resolved version; a range is a constraint, not an install.
+_PINNED_REQUIREMENT_RE = re.compile(
+    r"^\s*(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:\[[^\]]*\])?\s*==\s*"
+    r"(?P<version>[A-Za-z0-9][A-Za-z0-9.!+*-]*)")
+
+
+def normalise_python_name(name: str) -> str:
+    """PEP 503: Flask, flask and Flask_Login all name one project."""
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _from_poetry_lock(path: Path) -> dict[str, str]:
+    """poetry.lock — TOML with a [[package]] array."""
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8", errors="ignore"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+    resolved = {}
+    for package in data.get("package") or []:
+        if isinstance(package, dict) and package.get("name") and package.get("version"):
+            resolved[normalise_python_name(str(package["name"]))] = str(package["version"])
+    return resolved
+
+
+def _from_uv_lock(path: Path) -> dict[str, str]:
+    """uv.lock — same [[package]] shape as poetry.lock, different producer."""
+    return _from_poetry_lock(path)
+
+
+def _from_requirements(path: Path) -> dict[str, str]:
+    """A requirements file, but only the lines that pin a single version.
+
+    `django>=4.0` is a constraint and tells us nothing about what is installed;
+    `django==4.2.1` does. Mixing the two would report a floor as if it were a
+    resolution, which is precisely the mistake this module exists to avoid.
+    """
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return {}
+    resolved = {}
+    for line in text.splitlines():
+        line = line.split("#")[0]
+        if not line.strip() or line.lstrip().startswith("-"):
+            continue        # -r includes, --hashes, -e editable installs
+        match = _PINNED_REQUIREMENT_RE.match(line)
+        if match and "*" not in match.group("version"):
+            resolved[normalise_python_name(match.group("name"))] = match.group("version")
+    return resolved
+
+
+def python_resolved_versions(root: str | Path) -> dict[str, str]:
+    """{package name: version actually installed} for a Python repository.
+
+    Names are normalised per PEP 503, so a manifest saying `Flask-Login` and a
+    lockfile saying `flask-login` are the same package. Callers must normalise
+    the name they look up.
+
+    Lockfiles win over pinned requirements: read last, so they overwrite.
+    """
+    root = Path(root)
+    resolved: dict[str, str] = {}
+
+    for pattern, reader in (("requirements*.txt", _from_requirements),
+                            ("uv.lock", _from_uv_lock),
+                            ("poetry.lock", _from_poetry_lock)):
+        for path in root.rglob(pattern):
             if _SKIP_DIRS & set(path.relative_to(root).parts[:-1]):
                 continue
             resolved.update(reader(path))

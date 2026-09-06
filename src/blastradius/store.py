@@ -33,6 +33,7 @@ DEFAULT_DB_PATH = Path(os.environ.get("BLASTRADIUS_DB", Path.home() / ".blastrad
 
 ARTIFACT_TYPES = (
     "docker_image", "terraform_module", "github_action", "helm_chart", "npm_package",
+    "python_package",
 )
 
 
@@ -556,17 +557,30 @@ class Store:
             ]
 
     def monitorable_artifacts(self) -> list[dict]:
-        """Artifacts OSV can actually answer for."""
+        """Artifacts OSV can actually answer for.
+
+        Derived from osv.ECOSYSTEMS rather than restated here. The two were
+        separate lists of the same fact, so adding an ecosystem in one place
+        left this query silently excluding it — which is how a newly supported
+        type gets indexed and never monitored.
+        """
+        # Imported here, not at module scope: osv pulls in httpx, and the
+        # hooks' hot path must not pay for an HTTP client it never uses.
+        from .osv import ECOSYSTEMS
+
+        types = sorted(ECOSYSTEMS)
+        placeholders = ", ".join("?" * len(types))
         with self._conn() as conn:
             return [
                 dict(row)
                 for row in conn.execute(
-                    """
+                    f"""
                     SELECT DISTINCT a.id, a.type, a.identifier
                     FROM artifacts a
                     JOIN dependencies d ON d.artifact_id = a.id
-                    WHERE a.type IN ('github_action', 'npm_package')
-                    """
+                    WHERE a.type IN ({placeholders})
+                    """,
+                    types,
                 )
             ]
 

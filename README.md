@@ -17,7 +17,7 @@ It remembers what every repository you open depends on, tells your agent who els
 is affected *before* it changes one, and watches those dependencies for
 vulnerabilities while nobody is asking.
 
-Not a code graph. Excellent tools already index functions, classes and imports. BlastRadius indexes the other half — Docker images, Terraform modules, GitHub Actions, Helm charts, npm packages — across repository boundaries, and answers the question a single session cannot: *if I bump this, who breaks?*
+Not a code graph. Excellent tools already index functions, classes and imports. BlastRadius indexes the other half — Docker images, Terraform modules, GitHub Actions, Helm charts, npm and Python packages — across repository boundaries, and answers the question a single session cannot: *if I bump this, who breaks?*
 
 ---
 
@@ -312,7 +312,7 @@ showing one that turns out not to apply.
 
 Severity comes from the CVSS v3.1 vector computed with the real formula, because
 OSV reports a vector far more often than a number. Only ecosystems OSV genuinely
-covers are monitored — GitHub Actions and npm. Docker images, Terraform modules
+covers are monitored — GitHub Actions, npm and PyPI. Docker images, Terraform modules
 and Helm charts are indexed but never reported as "no known CVEs", which would
 be a lie.
 
@@ -361,13 +361,14 @@ the grader cannot quietly start reporting a number nobody can check.
   independently per repo, so a shared npm dependency is a drift and
   CVE-exposure signal rather than a breakage signal. Terraform modules, Actions
   and base images are where a shared artifact genuinely *is* the same thing.
-- **pnpm lockfiles are not read.**
+- **pnpm lockfiles are not read.** Python reads `poetry.lock`, `uv.lock` and
+  pinned requirements; npm reads `package-lock.json` and `yarn.lock`.
 - **The index only knows repos you have opened** with BlastRadius installed.
 
 ## Status
 
 Early, but complete across all four lanes and verified end to end on two
-machines. **322 tests**, run on Python 3.11–3.13 in CI, which also builds the
+machines. **441 tests**, run on Python 3.11–3.13 in CI, which also builds the
 distributions and installs the wheel on a machine that has never seen the
 source.
 

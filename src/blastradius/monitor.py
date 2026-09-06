@@ -15,7 +15,7 @@ from typing import Callable
 import httpx
 
 from .osv import ECOSYSTEMS, OsvClient, package_name
-from .semver import AFFECTED, UNKNOWN, spec_is_affected, version_is_affected
+from .ranges import AFFECTED, UNKNOWN, scheme_for
 from .store import Store
 
 logger = logging.getLogger("blastradius.monitor")
@@ -115,16 +115,17 @@ def check(
             # unparseable spec returns UNKNOWN and is kept: hiding a possible
             # vulnerability is far worse than showing one that does not apply.
             applicable = []
+            scheme = scheme_for((by_id.get(artifact_id) or {}).get("type"))
             for spec, resolved in store.specs_for_artifact(artifact_id):
                 affected_data = cve.get("affected") or []
                 if resolved:
                     # A lockfile gives a point version, so the answer is exact
                     # rather than "the range permits something vulnerable".
-                    verdict = version_is_affected(resolved, affected_data)
+                    verdict = scheme.version_is_affected(resolved, affected_data)
                     hit = verdict is not False   # None (unevaluable) still counts
                     label = resolved
                 else:
-                    hit = spec_is_affected(spec, affected_data) in (AFFECTED, UNKNOWN)
+                    hit = scheme.spec_is_affected(spec, affected_data) in (AFFECTED, UNKNOWN)
                     label = spec or "(unpinned)"
                 if hit and label not in applicable:
                     applicable.append(label)

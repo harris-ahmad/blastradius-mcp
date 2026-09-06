@@ -3,7 +3,8 @@
     "Ground truth for the fixture corpus.",
     "required  — must be extracted. Missing one is a recall failure.",
     "forbidden — must NOT be extracted. Finding one is a false positive:",
-    "            stage aliases, local paths, heredoc text, workspace protocols.",
+    "            stage aliases, local paths, heredoc text, workspace protocols,",
+    "            -r includes and -e editable installs.",
     "optional  — defensible either way. Neither rewarded nor penalised.",
     "identifier and version_spec accept a list when more than one form is fair."
   ],
@@ -34,8 +35,7 @@
       {"type": "github_action", "identifier": "actions/checkout", "version_spec": "main"},
       {"type": "github_action", "identifier": "actions/setup-node", "version_spec": "v4"}
     ],
-    "forbidden": ["deps", "runtime", "ghost", "${BASE_IMAGE}", "BASE_IMAGE",
-                  "@acme/shared-ui", "patched-lib"],
+    "forbidden": ["deps", "runtime", "ghost", "${BASE_IMAGE}", "BASE_IMAGE", "@acme/shared-ui", "patched-lib"],
     "optional": [
       {"type": "docker_image", "identifier": "node", "version_spec": "20-bookworm-slim"},
       {"type": "npm_package", "identifier": "vitest", "version_spec": "*"},
@@ -97,5 +97,25 @@
     ],
     "forbidden": [],
     "optional": []
+  },
+
+  "acme/analytics": {
+    "required": [
+      {"type": "python_package", "identifier": "requests", "version_spec": [">=2.31.0,<3.0.0", ">=2.31.0, <3.0.0"]},
+      {"type": "python_package", "identifier": "urllib3", "version_spec": "==2.2.1"},
+      {"type": "python_package", "identifier": "pandas", "version_spec": "~=2.2.0"},
+      {"type": "python_package", "identifier": "django", "version_spec": "^4.2.0"},
+      {"type": "python_package", "identifier": "redis", "version_spec": "~5.0.1"},
+      {"type": "python_package", "identifier": "boto3", "version_spec": "==1.34.100"},
+      {"type": "docker_image", "identifier": "python", "version_spec": "3.11-slim"},
+      {"type": "github_action", "identifier": "actions/checkout", "version_spec": "v4"},
+      {"type": "github_action", "identifier": "actions/setup-python", "version_spec": "v5"}
+    ],
+    "forbidden": ["../constraints.txt", "constraints.txt", "./libs/internal-helpers", "libs/internal-helpers", "internal-helpers", "py311", "analytics"],
+    "optional": [
+      {"type": "python_package", "identifier": "pytest", "version_spec": ">=8.0"},
+      {"type": "python_package", "identifier": "ruff", "version_spec": "*"},
+      {"type": "python_package", "identifier": "hatchling", "version_spec": null}
+    ]
   }
 }

@@ -11,7 +11,8 @@ from typing import Annotated, Any, Literal
 from mcp.server import MCPServer
 from pydantic import Field
 
-from .lockfile import npm_resolved_versions
+from .lockfile import (npm_resolved_versions, normalise_python_name,
+                       python_resolved_versions)
 from .scoring import QUALITY_RANK, classify_pinning, worst_quality
 from .store import ARTIFACT_TYPES, Dependency, Store
 
@@ -125,6 +126,10 @@ def record_dependencies(
     # here rather than left to extraction. The model reports what the manifest
     # asks for; this records what is actually installed.
     resolved = npm_resolved_versions(root_path) if root_path else {}
+    # Python names are compared case-insensitively with -_. folded together,
+    # so the lookup has to normalise the identifier the same way the lockfile
+    # reader normalised its keys.
+    resolved_python = python_resolved_versions(root_path) if root_path else {}
 
     deps = [
         Dependency(
@@ -136,6 +141,8 @@ def record_dependencies(
             resolved_version=(
                 d.get("resolved_version")
                 or (resolved.get(d["identifier"]) if d["type"] == "npm_package" else None)
+                or (resolved_python.get(normalise_python_name(d["identifier"]))
+                    if d["type"] == "python_package" else None)
             ),
         )
         for d in dependencies

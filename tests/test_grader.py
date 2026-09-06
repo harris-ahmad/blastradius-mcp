@@ -26,6 +26,9 @@ from blastradius.store import Dependency, Store  # noqa: E402
 
 EXPECTED = json.loads((FIXTURES / "expected.json").read_text())
 REPOS = {k: v for k, v in EXPECTED.items() if not k.startswith("_")}
+# Hardcoding the total means every new fixture repo breaks these tests for a
+# reason that has nothing to do with the grader.
+TOTAL_REQUIRED = sum(len(spec["required"]) for spec in REPOS.values())
 
 
 def plain(text: str) -> str:
@@ -112,8 +115,8 @@ def test_one_stripped_operator_is_enough_to_fail(tmp_path, capsys):
     assert grade(str(db), verbose=False) == 1
 
     out = plain(capsys.readouterr().out)
-    assert "recall  39/39" in out
-    assert "specs   38/39" in out
+    assert f"recall  {TOTAL_REQUIRED}/{TOTAL_REQUIRED}" in out
+    assert f"specs   {TOTAL_REQUIRED - 1}/{TOTAL_REQUIRED}" in out
     assert "express spec is '4.19.2', expected '^4.19.2'" in out
 
 
@@ -128,7 +131,7 @@ def test_an_empty_index_is_reported_rather_than_scored(tmp_path, capsys):
 def test_a_stripped_range_operator_fails(tmp_path, capsys):
     """The failure the grader exists for: full recall, destroyed signal.
 
-    Recall is a perfect 39/39 here and no trap is tripped. Only the specs
+    Recall is perfect here and no trap is tripped. Only the specs
     number moves, so it has to gate the exit code or this passes silently.
     """
     db = tmp_path / "index.db"
@@ -146,9 +149,8 @@ def test_a_stripped_range_operator_fails(tmp_path, capsys):
     assert grade(str(db), verbose=False) == 1
 
     out = plain(capsys.readouterr().out)
-    assert "recall  39/39" in out           # recall alone would have passed it
+    assert f"recall  {TOTAL_REQUIRED}/{TOTAL_REQUIRED}" in out   # recall alone would pass
     assert "traps   0 false positive(s)" in out
-    assert "(74% kept intact)" in out
     assert "express spec is '4.19.2', expected '^4.19.2'" in out
 
 

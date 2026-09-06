@@ -73,7 +73,23 @@ class TestParseVuln:
 
 class TestEcosystemCoverage:
     def test_only_claims_ecosystems_osv_actually_covers(self):
-        assert set(ECOSYSTEMS) == {"github_action", "npm_package"}
+        """Docker images, Terraform modules and Helm charts are indexed but
+        never monitored. Reporting "no known CVEs" for them would be a lie —
+        OSV has no ecosystem for them, so the absence of an advisory says
+        nothing at all."""
+        assert set(ECOSYSTEMS) == {"github_action", "npm_package", "python_package"}
+
+    def test_python_uses_pep440_not_semver(self):
+        """`1.0.dev1` sorts below `1.0a1` in Python and is unparseable to
+        semver; judging a Python pin with npm's rules would mis-evaluate every
+        advisory boundary that lands on a pre-release."""
+        from blastradius import pep440, semver
+        from blastradius.ranges import scheme_for
+
+        assert scheme_for("python_package") is pep440
+        assert scheme_for("npm_package") is semver
+        assert scheme_for("docker_image") is semver
+        assert scheme_for(None) is semver
 
     def test_action_version_suffix_is_stripped(self):
         assert package_name("actions/checkout@v4", "github_action") == "actions/checkout"

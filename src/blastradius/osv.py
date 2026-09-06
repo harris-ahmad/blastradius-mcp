@@ -21,6 +21,7 @@ OSV_BASE = "https://api.osv.dev/v1"
 ECOSYSTEMS: dict[str, str] = {
     "github_action": "GitHub Actions",
     "npm_package": "npm",
+    "python_package": "PyPI",
 }
 
 # GitHub advisories use MODERATE where CVSS says MEDIUM.

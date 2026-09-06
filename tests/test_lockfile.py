@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from blastradius.lockfile import npm_resolved_versions
+from blastradius.lockfile import (normalise_python_name, npm_resolved_versions, python_resolved_versions)
 
 
 def write(root, name, content):
@@ -74,3 +74,73 @@ class TestRobustness:
         write(tmp_path, "package-lock.json", {"lockfileVersion": 3, "packages": {
             "": {}, "node_modules/lodash": {"version": "4.17.21"}}})
         assert npm_resolved_versions(tmp_path)["lodash"] == "4.17.21"
+
+
+class TestPythonResolvedVersions:
+    """A pyproject range says what is permitted; a lock says what is installed.
+    The difference is 43 advisories versus 9."""
+
+    def test_poetry_lock_is_read(self, tmp_path):
+        (tmp_path / "poetry.lock").write_text(
+            '[[package]]\nname = "django"\nversion = "4.2.11"\n\n'
+            '[[package]]\nname = "requests"\nversion = "2.31.0"\n')
+        assert python_resolved_versions(tmp_path) == {
+            "django": "4.2.11", "requests": "2.31.0"}
+
+    def test_uv_lock_is_read(self, tmp_path):
+        (tmp_path / "uv.lock").write_text(
+            '[[package]]\nname = "httpx"\nversion = "0.27.0"\n')
+        assert python_resolved_versions(tmp_path) == {"httpx": "0.27.0"}
+
+    def test_names_are_normalised_per_pep503(self, tmp_path):
+        """Flask-Login, flask_login and FLASK.LOGIN are one project."""
+        (tmp_path / "poetry.lock").write_text(
+            '[[package]]\nname = "Flask-Login"\nversion = "0.6.3"\n')
+        assert python_resolved_versions(tmp_path) == {"flask-login": "0.6.3"}
+        assert normalise_python_name("Flask_Login") == "flask-login"
+        assert normalise_python_name("FLASK.LOGIN") == "flask-login"
+
+    def test_only_exact_pins_count_as_resolved(self, tmp_path):
+        """`django>=4.0` is a constraint. Recording it as a resolution would
+        report a floor as though it were what is installed — the exact
+        confusion this module exists to prevent."""
+        (tmp_path / "requirements.txt").write_text(
+            "django==4.2.1\n"
+            "requests>=2.28\n"
+            "urllib3~=2.2\n"
+            "numpy==1.*\n")
+        assert python_resolved_versions(tmp_path) == {"django": "4.2.1"}
+
+    def test_directives_and_comments_are_skipped(self, tmp_path):
+        (tmp_path / "requirements.txt").write_text(
+            "# production deps\n"
+            "-r base.txt\n"
+            "--require-hashes\n"
+            "-e ./local-pkg\n"
+            "\n"
+            "flask==3.0.0  # pinned by ops\n")
+        assert python_resolved_versions(tmp_path) == {"flask": "3.0.0"}
+
+    def test_extras_and_markers_do_not_break_the_name(self, tmp_path):
+        (tmp_path / "requirements.txt").write_text(
+            'requests[security]==2.31.0 ; python_version >= "3.9"\n')
+        assert python_resolved_versions(tmp_path) == {"requests": "2.31.0"}
+
+    def test_a_lockfile_wins_over_a_pinned_requirement(self, tmp_path):
+        (tmp_path / "requirements.txt").write_text("django==4.1.0\n")
+        (tmp_path / "poetry.lock").write_text(
+            '[[package]]\nname = "django"\nversion = "4.2.11"\n')
+        assert python_resolved_versions(tmp_path)["django"] == "4.2.11"
+
+    def test_vendored_trees_are_skipped(self, tmp_path):
+        (tmp_path / ".venv" / "lib").mkdir(parents=True)
+        (tmp_path / ".venv" / "lib" / "requirements.txt").write_text("evil==6.6.6\n")
+        (tmp_path / "requirements.txt").write_text("flask==3.0.0\n")
+        assert python_resolved_versions(tmp_path) == {"flask": "3.0.0"}
+
+    def test_malformed_toml_yields_nothing_rather_than_raising(self, tmp_path):
+        (tmp_path / "poetry.lock").write_text("[[package]\nname = broken")
+        assert python_resolved_versions(tmp_path) == {}
+
+    def test_no_python_files_is_empty(self, tmp_path):
+        assert python_resolved_versions(tmp_path) == {}

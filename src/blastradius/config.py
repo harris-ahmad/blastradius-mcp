@@ -19,13 +19,19 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from .store import ARTIFACT_TYPES
 from typing import Any
 
 CONFIG_PATH = Path(
     os.environ.get("BLASTRADIUS_CONFIG", Path.home() / ".blastradius" / "config.json")
 )
 
-ALL_TYPES = ("docker_image", "terraform_module", "github_action", "helm_chart", "npm_package")
+# Derived, not restated. This list has now been written out separately three
+# times — here, in the store's schema, and in the monitorable-artifacts query —
+# and a type added to one but not the others is indexed and then silently
+# filtered out of every injection. store is the single source.
+ALL_TYPES = ARTIFACT_TYPES
 _SEVERITY_ORDER = {"critical": 4, "high": 3, "medium": 2, "low": 1, "unknown": 0, "none": 0}
 
 

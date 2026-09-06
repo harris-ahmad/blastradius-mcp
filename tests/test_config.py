@@ -91,3 +91,25 @@ def test_the_example_config_is_valid(tmp_path):
     loaded = cfg.load(write(tmp_path, cfg.EXAMPLE))
     assert loaded.inject.enabled is True
     assert loaded.exclude.repositories == ("acme/internal-*",)
+
+
+class TestOneSourceForArtifactTypes:
+    """Adding a type used to mean editing three lists that nothing kept in
+    sync. python_package was indexed correctly and then filtered out of every
+    injection, because config still listed only the original five."""
+
+    def test_config_defers_to_the_store(self):
+        from blastradius.config import ALL_TYPES
+        from blastradius.store import ARTIFACT_TYPES
+        assert ALL_TYPES == ARTIFACT_TYPES
+
+    def test_monitored_types_are_a_subset_of_indexed_types(self):
+        """OSV covers some of what BlastRadius indexes, never more."""
+        from blastradius.osv import ECOSYSTEMS
+        from blastradius.store import ARTIFACT_TYPES
+        assert set(ECOSYSTEMS) <= set(ARTIFACT_TYPES)
+
+    def test_every_type_is_injectable_by_default(self):
+        from blastradius.config import InjectConfig
+        from blastradius.store import ARTIFACT_TYPES
+        assert set(InjectConfig().types) == set(ARTIFACT_TYPES)

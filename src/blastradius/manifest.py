@@ -16,6 +16,8 @@ MANIFEST_GLOBS = (
     ".github/workflows/*.yml", ".github/workflows/*.yaml",
     "**/Chart.yaml",
     "**/package.json",
+    "**/pyproject.toml",
+    "**/requirements*.txt",
 )
 
 SKIP_DIRS = {".git", "node_modules", "vendor", ".terraform", "dist", "build",
@@ -30,7 +32,15 @@ def is_manifest(file_path: str | Path) -> bool:
         return True
     if path.suffix.lower() in {".tf", ".tfvars"}:
         return True
-    if name in {"chart.yaml", "package.json"}:
+    if name in {"chart.yaml", "package.json", "pyproject.toml"}:
+        return True
+    # requirements.txt, requirements-dev.txt, requirements/prod.txt. Lockfiles
+    # (poetry.lock, uv.lock) are deliberately absent: they are machine-written
+    # and schema-stable, so lockfile.py parses them rather than spending a
+    # model read on them.
+    if name.startswith("requirements") and name.endswith(".txt"):
+        return True
+    if path.parent.name.lower() == "requirements" and path.suffix.lower() == ".txt":
         return True
     posix = path.as_posix()
     if ".github/workflows/" in posix and path.suffix.lower() in {".yml", ".yaml"}:

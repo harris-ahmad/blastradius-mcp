@@ -18,9 +18,8 @@ _VERSION_RE = re.compile(
 )
 _LEADING_OPERATOR_RE = re.compile(r"^\s*(\^|~>|~|>=|<=|>|<|=)\s*")
 
-AFFECTED = "affected"
-NOT_AFFECTED = "not_affected"
-UNKNOWN = "unknown"
+from . import ranges
+from .ranges import AFFECTED, NOT_AFFECTED, UNKNOWN  # noqa: F401  (re-exported)
 
 
 def parse(version: str | None) -> tuple[int, int, int, str] | None:
@@ -82,68 +81,14 @@ def floor_of(spec: str | None) -> str | None:
 
 
 def _affected_by_range(version: str, events: list[dict]) -> bool:
-    """Walk one OSV range's introduced/fixed/last_affected events in order."""
-    inside = False
-    for event in events:
-        if "introduced" in event:
-            introduced = event["introduced"]
-            if introduced == "0" or (compare(version, introduced) or -1) >= 0:
-                inside = True
-        elif "fixed" in event:
-            result = compare(version, event["fixed"])
-            if result is not None and result >= 0:
-                inside = False
-        elif "last_affected" in event:
-            result = compare(version, event["last_affected"])
-            if result is not None and result > 0:
-                inside = False
-    return inside
+    return ranges.affected_by_range(version, events, compare)
 
 
 def version_is_affected(version: str, affected: list[dict]) -> bool | None:
-    """Is this exact version covered by an advisory's `affected` entries?
-
-    None means the ranges could not be evaluated — an unparseable version, a
-    GIT-only range, or no range data at all.
-    """
-    if parse(version) is None:
-        return None
-
-    saw_usable_data = False
-    for entry in affected:
-        explicit = entry.get("versions") or []
-        if explicit:
-            saw_usable_data = True
-            if any(compare(version, v) == 0 for v in explicit):
-                return True
-
-        for range_ in entry.get("ranges") or []:
-            if str(range_.get("type", "")).upper() == "GIT":
-                continue  # commit ranges say nothing about a semver pin
-            events = range_.get("events") or []
-            if not events:
-                continue
-            saw_usable_data = True
-            if _affected_by_range(version, events):
-                return True
-
-    return False if saw_usable_data else None
+    """Is this exact version covered by an advisory's `affected` entries?"""
+    return ranges.version_is_affected(version, affected, parse, compare)
 
 
 def spec_is_affected(spec: str | None, affected: list[dict]) -> str:
-    """Verdict for a manifest spec against an advisory.
-
-    A range is judged by its lowest permitted version: if even that is already
-    fixed, nothing the range can resolve to is vulnerable. If the floor is
-    vulnerable the range *may* resolve to it, so the advisory stands.
-
-    Anything unparseable — a floating tag, a digest, a git ref — returns
-    UNKNOWN, which callers must treat as affected.
-    """
-    floor = floor_of(spec)
-    if floor is None:
-        return UNKNOWN
-    verdict = version_is_affected(floor, affected)
-    if verdict is None:
-        return UNKNOWN
-    return AFFECTED if verdict else NOT_AFFECTED
+    """Verdict for a manifest spec against an advisory."""
+    return ranges.spec_is_affected(spec, affected, floor_of, parse, compare)
