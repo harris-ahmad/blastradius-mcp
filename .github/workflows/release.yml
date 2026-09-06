@@ -22,9 +22,9 @@ jobs:
     name: build and verify
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -39,6 +39,12 @@ jobs:
           packaged="$(python scripts/check-packaging.py --print-version)"
           if [ "$tag" != "$packaged" ]; then
             echo "::error::tag $GITHUB_REF_NAME does not match packaged version $packaged"
+            echo "::error::The tag is almost certainly on the wrong commit — usually"
+            echo "::error::because it was created before pulling the release commit."
+            echo "::error::Fix: git checkout main && git pull"
+            echo "::error::     git tag -d $GITHUB_REF_NAME && git push --delete origin $GITHUB_REF_NAME"
+            echo "::error::     git tag $GITHUB_REF_NAME && git push origin $GITHUB_REF_NAME"
+            echo "::error::Nothing has been published; this version number is still free."
             exit 1
           fi
           echo "tag $GITHUB_REF_NAME matches version $packaged"
