@@ -11,6 +11,13 @@ the six-repository corpus in `fixtures/`, which has 39 required artifacts and
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.2.3] — 2026-08-31
+
+Performance only. No behaviour changes: injection output is byte-identical,
+and manifest discovery returns the same files across all six fixture repos.
+
 ### Performance
 
 - **Manifest discovery no longer walks vendored trees.** `find_manifests`
@@ -179,7 +186,8 @@ Relative to the original BlastRadius this replaces:
 - The index only knows repositories you have opened — see `blastradius index` in
   0.2.0.
 
-[Unreleased]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.2.0...v0.2.2
 [0.2.0]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/harris-ahmad/blastradius-mcp/releases/tag/v0.1.0
