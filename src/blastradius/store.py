@@ -215,6 +215,16 @@ class Store:
                     created_at  TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS captures (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id  TEXT,
+                    repository  TEXT NOT NULL,
+                    manifests   INTEGER NOT NULL,
+                    characters  INTEGER NOT NULL,
+                    created_at  TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_captures_time ON captures(created_at);
                 CREATE INDEX IF NOT EXISTS idx_injections_session
                     ON injections(session_id, file_path);
                 CREATE INDEX IF NOT EXISTS idx_injections_time ON injections(created_at);
@@ -550,6 +560,59 @@ class Store:
                 (session_id, repository, file_path, f"-{int(within_minutes)} minutes"),
             ).fetchone()
         return row is not None
+
+    def record_capture(self, session_id: str | None, repository: str,
+                       manifests: int, characters: int) -> None:
+        """Log what the Stop hook asked for.
+
+        Injection has been measured to the token since the beginning; capture
+        never was, which left the larger of the two costs as the one number
+        this project took on faith. What is recorded here is the block the
+        hook puts into context — not the reads and the tool call it then
+        provokes, which are the model's and cannot be seen from inside a hook.
+        """
+        with self._conn() as conn:
+            conn.execute(
+                """INSERT INTO captures
+                       (session_id, repository, manifests, characters, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (session_id, repository, manifests, characters, _now()),
+            )
+
+    def capture_stats(self, days: int | None = None) -> dict:
+        where, params = "", []
+        if days:
+            where = "WHERE created_at >= datetime('now', ?)"
+            params = [f"-{int(days)} days"]
+
+        with self._conn() as conn:
+            totals = conn.execute(
+                f"""
+                SELECT COUNT(*) AS prompts,
+                       COALESCE(SUM(characters), 0) AS chars,
+                       COALESCE(SUM(manifests), 0)  AS manifests,
+                       COUNT(DISTINCT session_id)   AS sessions
+                FROM captures {where}
+                """,
+                params,
+            ).fetchone()
+            by_repo = conn.execute(
+                f"""
+                SELECT repository, COUNT(*) AS prompts,
+                       COALESCE(SUM(characters), 0) AS chars
+                FROM captures {where}
+                GROUP BY repository ORDER BY chars DESC
+                """,
+                params,
+            ).fetchall()
+
+        return {
+            "prompts": int(totals["prompts"]),
+            "characters": int(totals["chars"]),
+            "manifests": int(totals["manifests"]),
+            "sessions": int(totals["sessions"]),
+            "by_repository": [dict(r) for r in by_repo],
+        }
 
     def injection_stats(self, days: int | None = None) -> dict:
         where, params = "", []

@@ -663,3 +663,48 @@ class TestTheCheapPathStaysCheap:
             "tool_input": {"file_path": str(root / "package.json")}})
         assert "blastradius.store" in loaded
         assert "blastradius.config" in loaded
+
+
+class TestCaptureIsMeasuredToo:
+    """Injection has been measured to the token since the start; capture never
+    was, which left the larger per-event cost as the one number this project
+    took on faith. A real session measures ~347 tokens per capture prompt
+    against ~40 per injection."""
+
+    def test_a_capture_prompt_is_recorded(self, repo):
+        root, db = repo
+        out = hooks.capture({"cwd": str(root), "session_id": "cap1"})
+        body = out["hookSpecificOutput"]["additionalContext"]
+
+        stats = Store(db).capture_stats()
+        assert stats["prompts"] == 1
+        assert stats["sessions"] == 1
+        assert stats["characters"] == len(body), "the recorded size is the real one"
+        assert stats["manifests"] == 2      # Dockerfile and the workflow
+
+    def test_a_silent_capture_costs_nothing_and_records_nothing(self, repo):
+        """Capture passes once everything is indexed. A pass puts nothing in
+        context, so it must not appear in the accounting either."""
+        root, db = repo
+        Store(db).record("org/api", [
+            dep("docker_image", "alpine", "3.19", "Dockerfile"),
+            dep("github_action", "actions/checkout", "v4", ".github/workflows/ci.yml"),
+        ])
+        assert "hookSpecificOutput" not in hooks.capture({"cwd": str(root),
+                                                          "session_id": "cap2"})
+        assert Store(db).capture_stats()["prompts"] == 0
+
+    def test_repositories_are_broken_out(self, repo):
+        root, db = repo
+        hooks.capture({"cwd": str(root), "session_id": "cap3"})
+        by_repo = Store(db).capture_stats()["by_repository"]
+        assert [r["repository"] for r in by_repo] == ["org/api"]
+
+    def test_the_window_filters(self, repo):
+        root, db = repo
+        hooks.capture({"cwd": str(root), "session_id": "cap4"})
+        assert Store(db).capture_stats(days=1)["prompts"] == 1
+        with Store(db)._conn() as conn:
+            conn.execute("UPDATE captures SET created_at = datetime('now', '-10 days')")
+        assert Store(db).capture_stats(days=1)["prompts"] == 0
+        assert Store(db).capture_stats()["prompts"] == 1

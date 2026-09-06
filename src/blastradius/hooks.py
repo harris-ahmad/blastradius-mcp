@@ -442,6 +442,7 @@ def capture(payload: dict[str, Any]) -> dict[str, Any]:
           "version is actually installed, which turns vulnerability matching "
           "from conservative into exact."
     )
+    store.record_capture(payload.get("session_id"), repository, len(unseen), len(body))
     return _context("Stop", body)
 
 

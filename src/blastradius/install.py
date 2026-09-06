@@ -336,17 +336,37 @@ def doctor() -> int:
     print(f"\n{BOLD}settings{OFF}")
     path = settings_path()
     settings = _load(path)
-    found_events = []
+    # The matcher matters as much as the registration. When it was Read|Edit,
+    # every hook was registered and every hook ran, and injection still fired
+    # zero times because an agent inspects a manifest with `cat` and changes it
+    # with `npm install` — neither of which is a Read or an Edit. doctor said
+    # "All wired up" throughout. Settings are written once at install time and
+    # never migrate, so an upgrade alone leaves the old matcher in place.
+    found: dict[str, str | None] = {}
     for event, groups in (settings.get("hooks") or {}).items():
         for group in groups if isinstance(groups, list) else []:
             for hook in (group.get("hooks") or []) if isinstance(group, dict) else []:
                 if MARKER in str(hook.get("command", "")):
-                    found_events.append(event)
+                    found[event] = group.get("matcher") if isinstance(group, dict) else None
+
+    expected = {event: (groups[0].get("matcher") if groups else None)
+                for event, groups in hook_entries(binary).items()}
+
     for wanted in ("PreToolUse", "Stop"):
-        if wanted in found_events:
-            print(f"  {TICK} {wanted} hook registered")
-        else:
+        if wanted not in found:
             print(f"  {CROSS} {wanted} hook missing — run: blastradius install")
+            problems += 1
+            continue
+        want_matcher, have_matcher = expected.get(wanted), found[wanted]
+        if want_matcher == have_matcher:
+            suffix = f" {DIM}matching {have_matcher}{OFF}" if have_matcher else ""
+            print(f"  {TICK} {wanted} hook registered{suffix}")
+        else:
+            print(f"  {CROSS} {wanted} matches {have_matcher!r}, "
+                  f"this version expects {want_matcher!r}")
+            print(f"    {DIM}settings were written by an older version and do not "
+                  f"migrate on upgrade{OFF}")
+            print(f"    run: blastradius install")
             problems += 1
 
     print(f"\n{BOLD}hooks actually run{OFF}")

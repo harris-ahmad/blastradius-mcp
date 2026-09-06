@@ -11,7 +11,32 @@ the six-repository corpus in `fixtures/`, which has 39 required artifacts and
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Capture is measured now too.** Injection has been accounted to the token
+  since the beginning; the `Stop` hook's prompt never was, which left the
+  larger per-event cost as the one number this project took on faith. Measured
+  over real sessions: **~347 tokens per capture prompt** against ~40 per
+  injection — though capture fires once per repository per session, not on
+  every manifest read. `blastradius cost` reports both. What is counted is the
+  prompt the hook puts into context; the reads and the tool call it provokes
+  belong to the model and cannot be seen from inside a hook.
+- **`blastradius --version`**, which also prints the directory the code is
+  imported from. The version alone lies in the case that matters: a stale
+  install shadowing a checkout reports the old number while running the new
+  code. Diagnosing exactly that previously required importing a private symbol
+  to infer which build was live.
+
+### Fixed
+
+- **`doctor` now checks the hook matcher, not just that hooks exist.** It
+  reported "All wired up" through the entire period the matcher was
+  `Read|Edit` and injection fired zero times — the hooks were registered and
+  they ran, both true, while the thing that made them useless was never looked
+  at. Settings are written at install time and do not migrate, so upgrading
+  the package alone leaves an old matcher in place. Anyone who installed 0.1.0
+  or 0.2.0 and upgraded is in that state now, with no way to find out. doctor
+  names the mismatch and exits non-zero.
 
 ## [0.3.1] — 2026-09-06
 

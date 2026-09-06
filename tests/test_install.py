@@ -281,3 +281,67 @@ class TestStalenessDetection:
         monkeypatch.chdir(tmp_path)
         stale, detail = inst.stale_against_source()
         assert stale is False
+
+
+class TestDoctorChecksTheMatcher:
+    """doctor reported "All wired up" through the entire period the matcher was
+    Read|Edit and injection fired zero times. The hooks were registered and
+    they ran — both true — while the thing that made them useless was never
+    looked at. Settings are written once and never migrate, so an upgrade
+    alone leaves the old matcher behind."""
+
+    def _wired(self, claude_dir, matcher=None):
+        """Reuses claude_dir, whose stand-in path ends in `blastradius` —
+        MARKER is how doctor tells our hook entries from anyone else's."""
+        inst.install()
+        path = claude_dir / "settings.json"
+        if matcher is not None:
+            settings = json.loads(path.read_text())
+            settings["hooks"]["PreToolUse"][0]["matcher"] = matcher
+            path.write_text(json.dumps(settings))
+        return path
+
+    def test_a_current_install_passes(self, claude_dir, capsys):
+        self._wired(claude_dir)
+        inst.doctor()
+        assert "PreToolUse hook registered" in capsys.readouterr().out
+
+    def test_an_older_matcher_is_named_and_fails(self, claude_dir, capsys):
+        self._wired(claude_dir, matcher="Read|Edit")
+        problems = inst.doctor()
+        out = capsys.readouterr().out
+        assert "Read|Edit" in out and "Read|Edit|Bash" in out
+        assert "blastradius install" in out
+        assert problems > 0, "a stale matcher must fail doctor, not just warn"
+
+    def test_a_missing_hook_is_still_reported(self, claude_dir, capsys):
+        path = self._wired(claude_dir)
+        settings = json.loads(path.read_text())
+        del settings["hooks"]["PreToolUse"]
+        path.write_text(json.dumps(settings))
+        assert inst.doctor() > 0
+        assert "PreToolUse hook missing" in capsys.readouterr().out
+
+
+class TestVersionReporting:
+    """Working out which code was actually running previously meant importing
+    a private symbol to infer it. The version alone is not enough: a stale
+    install shadowing a checkout reports the stale number while running the
+    new code, so the path is reported with it."""
+
+    def test_it_names_the_version_and_the_code_path(self):
+        from blastradius.cli import _version
+        import blastradius
+
+        out = _version()
+        assert out.startswith("blastradius ")
+        assert str(Path(blastradius.__file__).parent) in out
+
+    def test_an_uninstalled_tree_says_so_rather_than_guessing(self, monkeypatch):
+        from importlib.metadata import PackageNotFoundError
+        import blastradius.cli as cli
+
+        def missing(_name):
+            raise PackageNotFoundError(_name)
+        monkeypatch.setattr("importlib.metadata.version", missing)
+        assert "not installed" in cli._version()

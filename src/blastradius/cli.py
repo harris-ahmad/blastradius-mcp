@@ -4,6 +4,27 @@ from __future__ import annotations
 import json
 import signal
 import sys
+from pathlib import Path
+
+
+def _version() -> str:
+    """Version and the path the code is actually being imported from.
+
+    The version alone lies in the case that matters most. importlib.metadata
+    reports whatever distribution metadata is visible, which is not
+    necessarily the code on sys.path — a stale install shadowing a checkout
+    reports the stale number while running the new code, or the reverse. The
+    path makes that visible instead of leaving it to be inferred.
+    """
+    from importlib.metadata import PackageNotFoundError, version
+
+    import blastradius
+    try:
+        declared = version("blastradius-mcp")
+    except PackageNotFoundError:
+        declared = "not installed"
+    return (f"blastradius {declared}\n"
+            f"  running from: {Path(blastradius.__file__).parent}")
 
 
 def _hook_fast_path() -> bool:
@@ -25,6 +46,12 @@ def _hook_fast_path() -> bool:
 
 def main() -> None:
     if _hook_fast_path():
+        return
+
+    # Handled before argparse, which reflows the text and would break the
+    # path onto two lines mid-word.
+    if sys.argv[1:] in (["--version"], ["-V"]):
+        print(_version())
         return
 
     import argparse
@@ -182,9 +209,11 @@ def main() -> None:
 
     elif args.command == "cost":
         from .store import Store
+        store = Store()
         stats = Store().injection_stats(args.days)
-        if not stats["sent"] and not stats["suppressed"]:
-            print("No injections recorded yet.")
+        capture = store.capture_stats(args.days)
+        if not stats["sent"] and not stats["suppressed"] and not capture["prompts"]:
+            print("Nothing recorded yet.")
             return
 
         # Claude's tokenizer is not available locally, so this is an estimate.
@@ -193,7 +222,8 @@ def main() -> None:
         def tok(chars): return round(chars / 3.8)
 
         window = f"last {args.days} day(s)" if args.days else "all time"
-        print(f"Injection cost, {window}\n")
+        print(f"Context cost, {window}\n")
+        print("Injection — pushed before a manifest is read")
         print(f"  {stats['sent']} injection(s) across {stats['sessions']} session(s)")
         print(f"  {stats['characters']:,} characters  ≈ {tok(stats['characters']):,} tokens")
         if stats["sent"]:
@@ -209,6 +239,22 @@ def main() -> None:
             for row in stats["by_repository"]:
                 print(f"    {row['chars']:>8,} ch  ≈{tok(row['chars']):>6,} tok  "
                       f"{row['sent']:>3}x  {row['repository']}")
+        if capture["prompts"]:
+            print("\nCapture — asked for at end of session")
+            print(f"  {capture['prompts']} prompt(s) across "
+                  f"{capture['sessions']} session(s), "
+                  f"{capture['manifests']} manifest(s) flagged")
+            print(f"  {capture['characters']:,} characters  "
+                  f"≈ {tok(capture['characters']):,} tokens")
+            per = capture["characters"] / capture["prompts"]
+            print(f"  {per:.0f} characters each  ≈ {tok(per):.0f} tokens")
+            print("  \033[2mthe prompt only — the reads and the tool call it "
+                  "provokes are the model's\033[0m")
+            if capture["by_repository"]:
+                for row in capture["by_repository"][:5]:
+                    print(f"    {row['chars']:>8,} ch  ≈{tok(row['chars']):>6,} tok  "
+                          f"{row['prompts']:>3}x  {row['repository']}")
+
         if stats["by_file"]:
             print("\n  Most expensive files")
             for row in stats["by_file"][:5]:

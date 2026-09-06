@@ -163,6 +163,11 @@ previous file is backed up first. `uninstall` reverses it cleanly.
 
 ## Commands
 
+`blastradius --version` — the version *and* the path the code is imported
+from, since a stale install shadowing a checkout reports the wrong number.
+
+`blastradius cost` — what injection and capture have each spent on context.
+
 `blastradius index <dir>` — bootstrap from repos on disk. `--dry-run` lists what
 it would read, `--limit N` caps it, `--force` re-reads what is already indexed.
 Sessions are read-only: Write, Edit and Bash are denied, so it cannot modify a
@@ -368,7 +373,7 @@ the grader cannot quietly start reporting a number nobody can check.
 ## Status
 
 Early, but complete across all four lanes and verified end to end on two
-machines. **441 tests**, run on Python 3.11–3.13 in CI, which also builds the
+machines. **460 tests**, run on Python 3.11–3.13 in CI, which also builds the
 distributions and installs the wheel on a machine that has never seen the
 source.
 
