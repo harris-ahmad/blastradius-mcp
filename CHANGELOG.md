@@ -11,7 +11,30 @@ the six-repository corpus in `fixtures/`, which has 39 required artifacts and
 
 ## [Unreleased]
 
-Nothing yet.
+### Performance
+
+- **Injection stopped recomputing the whole index on every manifest read.**
+  At 1,500 repositories and 90,000 rows a single `inject()` took **303ms**,
+  against a 5-second hook timeout — and it grew with the index, so it degraded
+  worst for whoever used the tool most. **Now 51ms**, with byte-identical
+  output. Two causes, one of which was not the one it looked like:
+  - `impact_summary` ran two `COUNT(DISTINCT …)` aggregations over the joined
+    tables for every artifact in the file — 200ms of the 260ms. Those counts
+    change only when something is recorded or forgotten, so they are cached on
+    the artifact and maintained on write. The asking repository is subtracted
+    from the stored total rather than excluded in the query, which is exact
+    because it is asking from inside a file that consumes the artifact.
+  - `consumers()` fetched every consumer row and cut to five in Python —
+    1,499 rows to render 5, classifying each one. Pinning is now stored at
+    capture time, so the ranking and the cut happen in SQL.
+
+  The cost moves to the write path: `record()` for a normal repository is
+  ~28ms, against a capture session that takes 60–115 *seconds*. Reads happen
+  on every manifest touch; writes happen once per repository per session.
+
+  Cached counts drift, which is what makes them dangerous, so they are checked
+  against a live recount after a first record, repeated records, a re-spec, a
+  forgotten repository, and a forgotten sole consumer.
 
 ## [0.3.0] — 2026-09-06
 

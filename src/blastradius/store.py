@@ -29,6 +29,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Iterator
 
+from .scoring import classify_pinning
+
 DEFAULT_DB_PATH = Path(os.environ.get("BLASTRADIUS_DB", Path.home() / ".blastradius" / "index.db"))
 
 ARTIFACT_TYPES = (
@@ -225,6 +227,88 @@ class Store:
             self._ensure_column(conn, "cve_alerts", "applies_to", "TEXT")
             self._ensure_column(conn, "dependencies", "resolved_version", "TEXT")
             self._ensure_column(conn, "repositories", "last_scanned_at", "TEXT")
+            self._ensure_column(conn, "dependencies", "pinning", "TEXT")
+            self._ensure_column(conn, "artifacts", "consumer_count", "INTEGER")
+            self._ensure_column(conn, "artifacts", "version_spread", "INTEGER")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_deps_null_pinning "
+                         "ON dependencies(pinning)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_deps_pinning "
+                         "ON dependencies(artifact_id, pinning)")
+            self._backfill_pinning(conn)
+            if conn.execute("SELECT 1 FROM artifacts WHERE consumer_count IS NULL "
+                            "LIMIT 1").fetchone() is not None:
+                self._refresh_artifact_stats(conn)
+
+    @staticmethod
+    def _refresh_artifact_stats(conn: sqlite3.Connection,
+                                artifact_ids: "set[int] | None" = None) -> None:
+        """Recompute the cached per-artifact counts.
+
+        These were computed on every injection with COUNT(DISTINCT ...) over
+        the joined tables — 200ms of a 260ms hook at 90,000 rows, and growing
+        with the index. They change only when something is recorded or
+        forgotten, so they are maintained on write and read as plain columns.
+
+        `artifact_ids` limits the work to what a write touched; None recomputes
+        everything, which is what the migration needs.
+        """
+        scope, params = "", []
+        if artifact_ids is not None:
+            if not artifact_ids:
+                return
+            scope = f"WHERE a.id IN ({', '.join('?' * len(artifact_ids))})"
+            params = list(artifact_ids)
+        conn.execute(
+            f"""
+            WITH counts AS (
+                SELECT a.id AS artifact_id,
+                       COUNT(DISTINCT d.repository_id) AS consumers,
+                       COUNT(DISTINCT COALESCE(d.resolved_version, d.version_spec, ''))
+                           AS spread
+                FROM artifacts a
+                LEFT JOIN dependencies d ON d.artifact_id = a.id
+                {scope}
+                GROUP BY a.id
+            )
+            UPDATE artifacts
+               SET consumer_count = (SELECT consumers FROM counts
+                                     WHERE counts.artifact_id = artifacts.id),
+                   version_spread = (SELECT spread FROM counts
+                                     WHERE counts.artifact_id = artifacts.id)
+             WHERE id IN (SELECT artifact_id FROM counts)
+            """,
+            params,
+        )
+
+    @staticmethod
+    def _backfill_pinning(conn: sqlite3.Connection) -> None:
+        """Classify rows written before the column existed.
+
+        Without this an index built by an earlier version has NULL pinning
+        everywhere, which sorts as one undifferentiated bucket — so the "worst
+        pinned first" ordering would silently become arbitrary for exactly the
+        users who have the most data.
+        """
+        from .scoring import classify_pinning
+
+        # Indexed probe. Scanning for NULLs on every Store() would put a
+        # full-table read in front of every hook, which is the opposite of
+        # what this whole change is for.
+        if conn.execute("SELECT 1 FROM dependencies WHERE pinning IS NULL "
+                        "LIMIT 1").fetchone() is None:
+            return
+
+        rows = conn.execute(
+            """SELECT d.id, d.version_spec, a.type
+               FROM dependencies d JOIN artifacts a ON a.id = d.artifact_id
+               WHERE d.pinning IS NULL"""
+        ).fetchall()
+        if not rows:
+            return
+        conn.executemany(
+            "UPDATE dependencies SET pinning = ? WHERE id = ?",
+            [(classify_pinning(r["version_spec"], r["type"]), r["id"]) for r in rows],
+        )
 
     @staticmethod
     def _ensure_column(conn: sqlite3.Connection, table: str, column: str, sql_type: str) -> None:
@@ -268,6 +352,7 @@ class Store:
             ).fetchone()["id"]
 
             new_edges = 0
+            touched: set[int] = set()
             for dep in dependencies:
                 conn.execute(
                     "INSERT OR IGNORE INTO artifacts (type, identifier) VALUES (?, ?)",
@@ -282,41 +367,99 @@ class Store:
                     """
                     INSERT INTO dependencies
                         (repository_id, artifact_id, version_spec, resolved_version,
-                         file_path, line_number, recorded_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                         file_path, line_number, recorded_at, pinning)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(repository_id, artifact_id, file_path, line_number)
                     DO UPDATE SET version_spec     = excluded.version_spec,
                                   resolved_version = excluded.resolved_version,
-                                  recorded_at      = excluded.recorded_at
+                                  recorded_at      = excluded.recorded_at,
+                                  pinning          = excluded.pinning
                     """,
                     (repo_id, artifact_id, dep.version_spec, dep.resolved_version,
-                     dep.file_path, dep.line_number, _now()),
+                     dep.file_path, dep.line_number, _now(),
+                     classify_pinning(dep.version_spec, dep.type)),
                 )
                 new_edges += cur.rowcount or 0
+                touched.add(artifact_id)
 
+            self._refresh_artifact_stats(conn, touched)
             return {"repository_id": repo_id, "recorded": len(dependencies), "edges": new_edges}
 
     def forget_repository(self, repository: str) -> bool:
         with self._conn() as conn:
+            # Which artifacts this repository touched, before the cascade takes
+            # the rows away — their cached counts are about to be wrong.
+            affected = {
+                row["artifact_id"] for row in conn.execute(
+                    """SELECT DISTINCT d.artifact_id FROM dependencies d
+                       JOIN repositories r ON r.id = d.repository_id
+                       WHERE r.name = ?""", (repository,))
+            }
             cur = conn.execute("DELETE FROM repositories WHERE name = ?", (repository,))
+            self._refresh_artifact_stats(conn, affected)
             return cur.rowcount > 0
 
     # ── Read path (MCP tools + the injection hook) ────────────────────────────
+
+    # Worst-pinned first. Mirrors scoring.QUALITY_RANK, in SQL so the cut can
+    # happen in the query rather than after fetching everything.
+    _PINNING_ORDER = ("CASE d.pinning WHEN 'unpinned' THEN 4 WHEN 'partial' THEN 3 "
+                      "WHEN 'unknown' THEN 2 WHEN 'exact' THEN 1 WHEN 'sha' THEN 0 "
+                      "ELSE 2 END")
+
+    def top_consumer_repositories(self, identifier: str, artifact_type: str | None,
+                                  exclude_repository: str | None, limit: int) -> list[str]:
+        """The `limit` repositories whose pinning of this artifact is worst.
+
+        Injection shows a handful of consumers out of however many exist. Doing
+        that cut in Python meant fetching every row first — 1,499 of them to
+        render 5, then classifying each one — which is most of what a large
+        index costs on a manifest read.
+
+        A repository is ranked by its *worst* reference, not its first: a repo
+        that pins an artifact loosely anywhere is loose, whatever its other
+        files say.
+        """
+        names = identifier_candidates(identifier, artifact_type)
+        sql = f"""
+            SELECT r.name AS repository, MAX({self._PINNING_ORDER}) AS worst
+            FROM dependencies d
+            JOIN artifacts    a ON a.id = d.artifact_id
+            JOIN repositories r ON r.id = d.repository_id
+            WHERE a.identifier IN ({", ".join("?" * len(names))})
+        """
+        params: list[object] = list(names)
+        if artifact_type:
+            sql += " AND a.type = ?"
+            params.append(artifact_type)
+        if exclude_repository:
+            sql += " AND r.name != ?"
+            params.append(exclude_repository)
+        sql += " GROUP BY r.name ORDER BY worst DESC, r.name LIMIT ?"
+        params.append(limit)
+
+        with self._conn() as conn:
+            return [row["repository"] for row in conn.execute(sql, params)]
 
     def consumers(
         self,
         identifier: str,
         artifact_type: str | None = None,
         exclude_repository: str | None = None,
+        repositories: list[str] | None = None,
     ) -> list[dict]:
         """Who uses this artifact, and exactly where.
 
         `artifact_type` disambiguates a name shared across ecosystems. Omitting
         it returns every type that matches, each as its own group.
+
+        `repositories` narrows to a known set — used with
+        top_consumer_repositories to fetch only the rows that will be shown.
         """
         sql = """
             SELECT a.type, a.identifier, r.name AS repository, r.owner,
-                   d.version_spec, d.resolved_version, d.file_path, d.line_number
+                   d.version_spec, d.resolved_version, d.file_path, d.line_number,
+                   d.pinning
             FROM dependencies d
             JOIN artifacts    a ON a.id = d.artifact_id
             JOIN repositories r ON r.id = d.repository_id
@@ -331,7 +474,15 @@ class Store:
         if exclude_repository:
             sql += " AND r.name != ?"
             params.append(exclude_repository)
-        sql += " ORDER BY a.type, r.name, d.file_path, d.line_number"
+        if repositories is not None:
+            if not repositories:
+                return []
+            sql += f" AND r.name IN ({', '.join('?' * len(repositories))})"
+            params.extend(repositories)
+        # Worst pinning first within each repository, so a caller taking the
+        # first row per repo gets that repository's loosest reference.
+        sql += (f" ORDER BY a.type, r.name, {self._PINNING_ORDER} DESC,"
+                " d.file_path, d.line_number")
 
         with self._conn() as conn:
             return [dict(row) for row in conn.execute(sql, params)]
@@ -475,23 +626,26 @@ class Store:
         }
 
         with self._conn() as conn:
+            # Cached columns, not COUNT(DISTINCT) over the joined tables. The
+            # caller is asking from inside a repository that consumes these
+            # artifacts, so "other" is the stored total minus itself — exact,
+            # and it costs one indexed lookup per artifact instead of a scan.
             rows = conn.execute(
                 f"""
-                SELECT a.type, a.identifier,
-                       COUNT(DISTINCT CASE WHEN r.name != ? THEN r.name END) AS other_consumers,
-                       COUNT(DISTINCT COALESCE(d.resolved_version, d.version_spec, '')) AS spread
+                SELECT a.type, a.identifier, a.consumer_count, a.version_spread,
+                       EXISTS (SELECT 1 FROM dependencies d
+                               JOIN repositories r ON r.id = d.repository_id
+                               WHERE d.artifact_id = a.id AND r.name = ?) AS mine
                 FROM artifacts a
-                JOIN dependencies d ON d.artifact_id = a.id
-                JOIN repositories r ON r.id = d.repository_id
                 WHERE {clause}
-                GROUP BY a.type, a.identifier
                 """,
                 [exclude_repository or "", *flat],
             ).fetchall()
             for row in rows:
+                total = int(row["consumer_count"] or 0)
                 summary[(row["type"], row["identifier"])].update(
-                    other_consumers=int(row["other_consumers"]),
-                    version_spread=int(row["spread"]),
+                    other_consumers=max(0, total - (1 if row["mine"] else 0)),
+                    version_spread=int(row["version_spread"] or 0),
                 )
 
             alert_rows = conn.execute(

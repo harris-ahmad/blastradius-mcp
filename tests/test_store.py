@@ -348,3 +348,73 @@ class TestConnectionReuse:
         store.close()
         store.close()
         assert store.indexed_files("org/api") == set()   # reopens on demand
+
+
+class TestCachedAggregatesStayTrue:
+    """consumer_count and version_spread are maintained on write so injection
+    does not recompute them. Cached numbers drift; that is what makes them
+    dangerous, so this checks them against a live recount after every kind of
+    mutation rather than trusting the maintenance code."""
+
+    def _recount(self, store, identifier, artifact_type):
+        with store._conn() as conn:
+            row = conn.execute(
+                """SELECT COUNT(DISTINCT d.repository_id) AS consumers,
+                          COUNT(DISTINCT COALESCE(d.resolved_version,
+                                                  d.version_spec, '')) AS spread
+                   FROM artifacts a
+                   LEFT JOIN dependencies d ON d.artifact_id = a.id
+                   WHERE a.identifier = ? AND a.type = ?""",
+                (identifier, artifact_type)).fetchone()
+            cached = conn.execute(
+                "SELECT consumer_count, version_spread FROM artifacts "
+                "WHERE identifier = ? AND type = ?",
+                (identifier, artifact_type)).fetchone()
+        return ((row["consumers"], row["spread"]),
+                (cached["consumer_count"], cached["version_spread"]))
+
+    def _assert_true(self, store, identifier="react", artifact_type="npm_package"):
+        live, cached = self._recount(store, identifier, artifact_type)
+        assert cached == live, f"cached {cached} != live {live}"
+
+    def test_after_a_first_record(self, store):
+        store.record("org/a", [dep("npm_package", "react", "^18.0.0", "package.json")])
+        self._assert_true(store)
+
+    def test_after_more_repositories_join(self, store):
+        for i in range(5):
+            store.record(f"org/r{i}", [dep("npm_package", "react", f"^18.{i}.0",
+                                           "package.json")])
+        self._assert_true(store)
+
+    def test_after_a_respec(self, store):
+        store.record("org/a", [dep("npm_package", "react", "^18.0.0", "package.json")])
+        store.record("org/a", [dep("npm_package", "react", "19.0.0", "package.json")])
+        self._assert_true(store)
+
+    def test_after_forgetting_a_repository(self, store):
+        store.record("org/a", [dep("npm_package", "react", "^18.0.0", "package.json")])
+        store.record("org/b", [dep("npm_package", "react", "^17.0.0", "package.json")])
+        store.forget_repository("org/b")
+        self._assert_true(store)
+
+    def test_after_forgetting_the_only_consumer(self, store):
+        store.record("org/a", [dep("npm_package", "react", "^18.0.0", "package.json")])
+        store.forget_repository("org/a")
+        self._assert_true(store)
+
+    def test_impact_summary_excludes_the_asking_repository(self, store):
+        for name in ("org/a", "org/b", "org/c"):
+            store.record(name, [dep("npm_package", "react", "^18.0.0", "package.json")])
+
+        summary = store.impact_summary([("npm_package", "react")],
+                                       exclude_repository="org/a")
+        assert summary[("npm_package", "react")]["other_consumers"] == 2
+
+    def test_a_repository_that_does_not_consume_it_is_not_subtracted(self, store):
+        store.record("org/a", [dep("npm_package", "react", "^18.0.0", "package.json")])
+        store.record("org/b", [dep("npm_package", "vue", "^3.0.0", "package.json")])
+
+        summary = store.impact_summary([("npm_package", "react")],
+                                       exclude_repository="org/b")
+        assert summary[("npm_package", "react")]["other_consumers"] == 1

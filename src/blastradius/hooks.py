@@ -219,8 +219,16 @@ def inject(payload: dict[str, Any]) -> dict[str, Any]:
 
     entries: list[dict[str, Any]] = []
     for artifact in artifacts[:config.inject.max_artifacts]:
+        # Pick the repositories to show before fetching their rows. Fetching
+        # every consumer of a widely-used artifact and cutting to five in
+        # Python is what made injection cost 300ms against a large index.
+        shown = store.top_consumer_repositories(
+            artifact["identifier"], artifact["type"], repository,
+            config.inject.max_consumers,
+        )
         others = store.consumers(
-            artifact["identifier"], artifact["type"], exclude_repository=repository
+            artifact["identifier"], artifact["type"], exclude_repository=repository,
+            repositories=shown,
         )
         alerts = [
             a for a in store.alerts_for(artifact["identifier"], artifact["type"])
@@ -239,12 +247,21 @@ def inject(payload: dict[str, Any]) -> dict[str, Any]:
             # signal, so it must not drop the operator itself.
             entry = by_repo.setdefault(row["repository"], {
                 "spec": _display_spec(row["version_spec"], row["resolved_version"]),
-                "pinning": classify_pinning(row["version_spec"], row["type"]),
+                # Stored at capture time. Classifying here meant doing it once
+                # per consumer row — twelve thousand times to render forty
+                # lines — and the answer never changes for a given spec.
+                "pinning": row["pinning"] or classify_pinning(row["version_spec"],
+                                                              row["type"]),
                 "where": [],
             })
             entry["where"].append(f"{row['file_path']}:{row['line_number']}")
 
-        entries.append({"artifact": artifact, "by_repo": by_repo, "alerts": alerts})
+        # The true consumer count, not len(by_repo): the query returns only the
+        # repositories that will be shown, so inferring "and N more" from what
+        # came back would always say zero.
+        summary = summaries.get((artifact["type"], artifact["identifier"]), {})
+        entries.append({"artifact": artifact, "by_repo": by_repo, "alerts": alerts,
+                        "total_consumers": summary.get("other_consumers", len(by_repo))})
 
     if not entries:
         _debug("artifacts found, but no OTHER repo consumes them and there are "
@@ -264,17 +281,17 @@ def _render_verbose(relative: str, entries: list[dict], config) -> str:
     lines: list[str] = []
     for entry in entries:
         artifact, by_repo, alerts = entry["artifact"], entry["by_repo"], entry["alerts"]
+        total = entry["total_consumers"]
         header = f"`{artifact['identifier']}` (line {artifact['line_number']})"
         if by_repo:
             ranked = sorted(by_repo.items(),
-                            key=lambda kv: -QUALITY_RANK.get(kv[1]["pinning"], 2)
-                            )[:config.inject.max_consumers]
-            lines.append(f"- {header} — also used by {len(by_repo)} other repo(s):")
+                            key=lambda kv: -QUALITY_RANK.get(kv[1]["pinning"], 2))
+            lines.append(f"- {header} — also used by {total} other repo(s):")
             for name, info in ranked:
                 spec = info["spec"] or "unpinned"
                 lines.append(f"    {name} @ {spec} ({info['pinning']}) — {info['where'][0]}")
-            if len(by_repo) > config.inject.max_consumers:
-                lines.append(f"    …and {len(by_repo) - config.inject.max_consumers} more")
+            if total > config.inject.max_consumers:
+                lines.append(f"    …and {total - config.inject.max_consumers} more")
         else:
             lines.append(f"- {header}")
         for alert in alerts[:3]:
@@ -329,6 +346,7 @@ def _render_compact(relative: str, entries: list[dict], config) -> str:
     lines = [f"blastradius {relative}"]
     for entry in entries:
         artifact, by_repo, alerts = entry["artifact"], entry["by_repo"], entry["alerts"]
+        total = entry["total_consumers"]
         head = f"{artifact['identifier']} L{artifact['line_number']}"
 
         if by_repo:
@@ -341,10 +359,10 @@ def _render_compact(relative: str, entries: list[dict], config) -> str:
                 pinning = info["pinning"]
                 mark = pinning.upper() if pinning == "unpinned" else pinning
                 parts.append(f"{name} {spec} {mark}{_where(info['where'][0], relative)}")
-            extra = (f" +{len(by_repo) - config.inject.max_consumers}"
-                     if len(by_repo) > config.inject.max_consumers else "")
-            noun = "repo" if len(by_repo) == 1 else "repos"
-            lines.append(f"{head} → {len(by_repo)} {noun}{extra}: " + " · ".join(parts))
+            extra = (f" +{total - config.inject.max_consumers}"
+                     if total > config.inject.max_consumers else "")
+            noun = "repo" if total == 1 else "repos"
+            lines.append(f"{head} → {total} {noun}{extra}: " + " · ".join(parts))
         else:
             lines.append(head)
 
