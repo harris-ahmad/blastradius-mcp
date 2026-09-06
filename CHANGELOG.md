@@ -11,6 +11,13 @@ the six-repository corpus in `fixtures/`, which has 39 required artifacts and
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.3.1] — 2026-09-06
+
+Performance only, on the read path. No behaviour change: injection output
+is byte-identical.
+
 ### Performance
 
 - **Injection stopped recomputing the whole index on every manifest read.**
@@ -242,7 +249,8 @@ Relative to the original BlastRadius this replaces:
 - The index only knows repositories you have opened — see `blastradius index` in
   0.2.0.
 
-[Unreleased]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/harris-ahmad/blastradius-mcp/compare/v0.2.0...v0.2.2
